@@ -1,0 +1,134 @@
+#include <set>
+
+#include <txmempool_format.h>
+#include <cliargs.h>
+
+std::string time_string(int64_t time) {
+    char buf[128];
+    sprintf(buf, "%s", asctime(gmtime((time_t*)(&time))));
+    buf[strlen(buf)-1] = 0; // remove \n
+    return buf;
+}
+
+typedef std::string (*txid_str_f)(const uint256& txid);
+
+std::string txid_long(const uint256& txid) { return txid.ToString(); }
+
+std::string txid_short(const uint256& txid) {
+    static std::set<uint256> seen;
+    if (seen.find(txid) == seen.end()) {
+        seen.insert(txid);
+        return txid_long(txid);
+    }
+    return txid.ToString().substr(0, 10);
+}
+txid_str_f txid_str = txid_short;
+
+struct tracked {
+    uint256 txid;
+    int depth;
+    tracked(const uint256& txid_in, int depth_in = 0) : txid(txid_in), depth(depth_in) {}
+    tracked(const tracked& origin, const uint256& txid_in) : txid(txid_in), depth(origin.depth - 1) {}
+    bool operator<(const tracked& other) const { return txid<other.txid; }
+    bool operator==(const tracked& other) const { return txid==other.txid; }
+};
+
+int main(int argc, char* const* argv) {
+    cliargs ca;
+    ca.add_option("help", 'h', no_arg);
+    ca.add_option("long", 'l', no_arg);
+    ca.add_option("verbose", 'v', no_arg);
+    ca.add_option("depth", 'd', req_arg);
+    ca.parse(argc, argv);
+
+    if (ca.m.count('h') || ca.l.size() < 2) {
+        fprintf(stderr, "syntax: %s [--help|-h] [--long|-l] [--verbose|-v] [--depth=<depth>|-d<depth>] <mff file> <txid> [<txid> [...]]\n", argv[0]);
+        return 1;
+    }
+
+    if (ca.m.count('l')) txid_str = txid_long;
+    bool verbose = ca.m.count('v');
+    int depth = 0;
+    if (ca.m.count('d')) depth = atoi(ca.m['d']);
+
+    std::string infile = ca.l[0];
+    std::set<tracked> txids;
+    for (size_t i = 1; i < ca.l.size(); ++i) {
+        txids.insert(tracked{uint256S(ca.l[i]), depth});
+    }
+    mff::reader reader(infile);
+    reader.read_entry();
+    printf("%s: ---log starts---\n", time_string(reader.last_time).c_str());
+    uint64_t entries = 0;
+    do {
+        bool count = true;
+        for (const tracked& t : txids) {
+            const uint256& txid = t.txid;
+            if (reader.touched_txid(txid, count)) {
+                if (reader.last_cmd == mff::TX_INVALID && txid == reader.get_replacement_txid() && txids.find(reader.get_invalidated_txid()) != txids.end()) {
+                    // if we have both the invalidated and replacement txids in the txids set,
+                    // we skip the replacement version or we end up showing the same entry
+                    // twice
+                    continue;
+                }
+                printf("%s: %s", time_string(reader.last_time).c_str(), cmd_str(reader.last_cmd).c_str());
+                if (reader.last_cmd == mff::TX_INVALID) {
+                    printf(" %s (%s)", txid_str(reader.get_invalidated_txid()).c_str(), tx_invalid_state_str(reader.last_invalid_state));
+                    if (reader.replacement_seq != 0 || !reader.replacement_txid.IsNull()) {
+                        uint256 replacement = reader.get_replacement_txid();
+                        txids.insert(tracked{replacement, t.depth});
+                        printf(" -> %s", txid_str(replacement).c_str());
+                    }
+                    if (verbose) {
+                        printf("\n\t%s", HexStr(reader.last_invalidated_txhex).c_str());
+                    }
+                } else if (reader.last_cmd == mff::TX_OUT) {
+                    printf(" (%s)", tx_out_reason_str(reader.last_out_reason));
+                } else if (reader.last_cmd == mff::TX_REC) {
+                    const auto& t = reader.last_recorded_tx;
+                    std::string extra = "";
+                    // check if any of our targeted tx's is spent by this tx
+                    for (const tracked& tracked2 : txids) {
+                        uint32_t index;
+                        if (t->spends(tracked2.txid, reader.seqs[tracked2.txid], index)) {
+                            extra += std::string(" (spends ") + txid_str(tracked2.txid) + ":" + std::to_string(index) + ")";
+                            if (tracked2.depth > 0 && txids.find(tracked{t->id}) == txids.end()) {
+                                txids.insert(tracked{tracked2, t->id});
+                            }
+                        }
+                    }
+                    if (!t->is(txid) && extra == "") {
+                    //     // printf(" (");
+                    // } else if (t->spends(txid, reader.seqs[txid])) {
+                    //     extra = std::string(" (spends ") + txid_str(txid) + ")";
+                    //     // printf(" (spends %s: ", txid_str(txid).c_str());
+                    // } else {
+                        extra = " (?)";
+                        // printf(" (???: ");
+                    }
+                    printf(" (first seen %s%s - %llu vbytes, %llu fee, %.3lf fee rate (s/vbyte))\n", txid_str(t->id).c_str(), extra.c_str(), t->vsize(), t->fee, t->feerate());
+                    // const mff::tx& t = *reader.txs[reader.seqs[txid]];
+                    // printf(" (txid seq=%llu) %s", reader.seqs[txid], t->to_string().c_str());
+                    // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %llu = %s", x.get_seq(), reader.txs[x.get_seq()]->id.ToString().c_str());
+                    // we don't wanna bother with tracking TX_REC for multiple txids so we just break the loop here
+                    break;
+                } else if (reader.last_cmd == mff::TX_CONF) {
+                    printf(" (%s in #%u)", txid_str(txid).c_str(), reader.active_chain.height);
+                }
+                fputc('\n', stdout);
+            }
+            count = false;
+        }
+        entries++;
+    } while (reader.read_entry());
+    printf("%s: ----log ends----\n", time_string(reader.last_time).c_str());
+    printf("%llu entries parsed\n", entries);
+    printf("txid hits:\n");
+    uint32_t max = 0;
+    for (const auto& th : reader.txid_hits) {
+        if (th.second > max || (th.second == max && max > 4)) {
+            printf("%s: %6u\n", th.first.ToString().c_str(), th.second);
+            max = th.second;
+        }
+    }
+}
