@@ -130,7 +130,9 @@ struct tx {
     }
     std::string to_string() const {
         std::string s = strprintf("tx(%s):", id.ToString());
-        for (const auto& in : vin) s += "\n\t" + in.to_string();
+        for (uint64_t i = 0; i < inputs; i++) {
+            s += "\n\t" + (state[i] == outpoint::state_confirmed ? "<found in block>" : vin[i].to_string());
+        }
         return s;
     }
 
@@ -146,6 +148,9 @@ struct tx {
         // printf("serializing tx\n");
         // if (!ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         READWRITE(id);
+        if (id == uint256S("b18e5addfa0bc9ed3f0db6195a3bd606c5c4885359a0cc68bf46ee48af7f7f3b")) {
+            printf("");
+        }
         // if (ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         // if (!ser_action.ForRead()) printf("- seq: %llu\n", seq);
         READWRITE(COMPACTSIZE(seq));

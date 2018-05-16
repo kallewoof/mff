@@ -28,7 +28,7 @@ struct tracked {
     uint256 txid;
     int depth;
     tracked(const uint256& txid_in, int depth_in = 0) : txid(txid_in), depth(depth_in) {}
-    tracked(const tracked& origin, const uint256& txid_in) : txid(txid_in), depth(origin.depth - 1) {}
+    tracked(const tracked& origin, const uint256& txid_in) : tracked(txid_in, origin.depth - 1) {}
     bool operator<(const tracked& other) const { return txid<other.txid; }
     bool operator==(const tracked& other) const { return txid==other.txid; }
 };
@@ -49,7 +49,10 @@ int main(int argc, char* const* argv) {
     if (ca.m.count('l')) txid_str = txid_long;
     bool verbose = ca.m.count('v');
     int depth = 0;
-    if (ca.m.count('d')) depth = atoi(ca.m['d']);
+    if (ca.m.count('d')) {
+        depth = atoi(ca.m['d']);
+        printf("depth = %d\n", depth);
+    }
 
     std::string infile = ca.l[0];
     std::set<tracked> txids;
@@ -60,11 +63,13 @@ int main(int argc, char* const* argv) {
     reader.read_entry();
     printf("%s: ---log starts---\n", time_string(reader.last_time).c_str());
     uint64_t entries = 0;
+    uint32_t nooutputiters = 0;
     do {
-        bool count = true;
+        bool count = false;
         for (const tracked& t : txids) {
             const uint256& txid = t.txid;
             if (reader.touched_txid(txid, count)) {
+                nooutputiters = 0;
                 if (reader.last_cmd == mff::TX_INVALID && txid == reader.get_replacement_txid() && txids.find(reader.get_invalidated_txid()) != txids.end()) {
                     // if we have both the invalidated and replacement txids in the txids set,
                     // we skip the replacement version or we end up showing the same entry
@@ -86,6 +91,7 @@ int main(int argc, char* const* argv) {
                     printf(" (%s)", tx_out_reason_str(reader.last_out_reason));
                 } else if (reader.last_cmd == mff::TX_REC) {
                     const auto& t = reader.last_recorded_tx;
+                    // printf("\n\t%s\n", t->to_string().c_str());
                     std::string extra = "";
                     // check if any of our targeted tx's is spent by this tx
                     for (const tracked& tracked2 : txids) {
@@ -120,6 +126,11 @@ int main(int argc, char* const* argv) {
             count = false;
         }
         entries++;
+        nooutputiters++;
+        if (nooutputiters > 10000) {
+            printf("%s\r", time_string(reader.last_time).c_str());
+            fflush(stdout);
+        }
     } while (reader.read_entry());
     printf("%s: ----log ends----\n", time_string(reader.last_time).c_str());
     printf("%llu entries parsed\n", entries);
