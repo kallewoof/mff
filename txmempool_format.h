@@ -148,9 +148,6 @@ struct tx {
         // printf("serializing tx\n");
         // if (!ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         READWRITE(id);
-        if (id == uint256S("b18e5addfa0bc9ed3f0db6195a3bd606c5c4885359a0cc68bf46ee48af7f7f3b")) {
-            printf("");
-        }
         // if (ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         // if (!ser_action.ForRead()) printf("- seq: %llu\n", seq);
         READWRITE(COMPACTSIZE(seq));
