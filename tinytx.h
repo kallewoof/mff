@@ -167,13 +167,15 @@ struct tx {
 
     template<typename Stream>
     inline void Unserialize(Stream& s) {
+        const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
+
         s >> version;
         unsigned char flags = 0;
         vin.clear();
         vout.clear();
         /* Try to read the vin. In case the dummy is there, this will be read as an empty vector. */
         s >> vin;
-        if (vin.size() == 0) {
+        if (vin.size() == 0 && fAllowWitness) {
             /* We read a dummy or an empty vin. */
             s >> flags;
             if (flags != 0) {
@@ -184,7 +186,7 @@ struct tx {
             /* We read a non-empty vin. Assume a normal vout follows. */
             s >> vout;
         }
-        if ((flags & 1)) {
+        if ((flags & 1) && fAllowWitness) {
             /* The witness flag is present, and we support witnesses. */
             flags ^= 1;
             for (size_t i = 0; i < vin.size(); i++) {
@@ -201,12 +203,16 @@ struct tx {
 
     template<typename Stream>
     inline void Serialize(Stream& s) const {
+        const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
+
         s << version;
         unsigned char flags = 0;
         // Consistency check
-        /* Check whether witnesses need to be serialized. */
-        if (HasWitness()) {
-            flags |= 1;
+        if (fAllowWitness) {
+            /* Check whether witnesses need to be serialized. */
+            if (HasWitness()) {
+                flags |= 1;
+            }
         }
         if (flags) {
             /* Use extended format in case witnesses are to be serialized. */

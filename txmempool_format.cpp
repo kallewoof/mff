@@ -304,7 +304,13 @@ bool reader::read_entry() {
                 auto t = txs[tx_invalid];
                 t->location = tx::location_invalid;
                 t->invalid_reason = (tx::invalid_reason_enum)state;
-                if (txs.count(tx_invalid)) last_invalidated_tx.hash = txs[tx_invalid]->id;
+                if (txs.count(tx_invalid)) {
+                    if (last_invalidated_tx.hash != txs[tx_invalid]->id) {
+                        printf("tx hash failure:\n\t%s\nvs\t%s\n", last_invalidated_tx.hash.ToString().c_str(), txs[tx_invalid]->id.ToString().c_str());
+                        printf("tx hex = %s\n", HexStr(last_invalidated_txhex).c_str());
+                    }
+                    assert(last_invalidated_tx.hash == txs[tx_invalid]->id);
+                }
             }
             mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
             mplinfo_("----- tx invalid deserialization ends -----\n");
