@@ -44,6 +44,14 @@ inline std::string cmd_str(CMD c) {
 
 typedef uint64_t seq_t;
 
+class rseq_container {
+public:
+    virtual seq_t seq_read() = 0;
+    virtual void seq_write(seq_t seq) = 0;
+};
+
+extern rseq_container* g_rseq_ctr;
+
 class outpoint {
 public:
     enum state: uint8_t {
@@ -67,7 +75,11 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(COMPACTSIZE(n));
         if (known) {
-            READWRITE(seq);
+            if (ser_action.ForRead()) {
+                seq = g_rseq_ctr->seq_read();
+            } else {
+                g_rseq_ctr->seq_write(seq);
+            }
         } else {
             READWRITE(txid);
         }
@@ -150,7 +162,11 @@ struct tx {
         READWRITE(id);
         // if (ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         // if (!ser_action.ForRead()) printf("- seq: %llu\n", seq);
-        READWRITE(COMPACTSIZE(seq));
+        if (ser_action.ForRead()) {
+            seq = g_rseq_ctr->seq_read();
+        } else {
+            g_rseq_ctr->seq_write(seq);
+        }
         // if (ser_action.ForRead()) printf("- seq: %llu\n", seq);
         // if (!ser_action.ForRead()) printf("- weight: %llu\n", weight);
         READWRITE(COMPACTSIZE(weight));
@@ -213,7 +229,11 @@ struct block {
             known.resize(count_known);
         }
         for (uint64_t i = 0; i < count_known; ++i) {
-            READWRITE(COMPACTSIZE(known[i]));
+            if (ser_action.ForRead()) {
+                known[i] = g_rseq_ctr->seq_read();
+            } else {
+                g_rseq_ctr->seq_write(known[i]);
+            }
         }
         READWRITE(unknown);
     }
@@ -240,7 +260,7 @@ struct chain {
         state == mff::tx::invalid_unknown ? "???" : "*DATA CORRUPTION*"\
     )
 
-class reader {
+class reader: public rseq_container {
 private:
     FILE* in_fp;
     CAutoFile in;
@@ -254,6 +274,8 @@ public:
     blockdict_t blocks;
     chain active_chain;
     int64_t last_time;
+    uint64_t last_seq;
+
     CMD last_cmd;
     std::vector<seq_t> last_seqs;
     seq_t replacement_seq; // for TX_INVALID; points to the new txid
@@ -268,9 +290,13 @@ public:
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
     reader(const std::string path = "");
+    ~reader();
     bool read_entry();
     uint256 get_replacement_txid() const;
     uint256 get_invalidated_txid() const;
+
+    seq_t seq_read() override;
+    void seq_write(seq_t seq) override;
 };
 
 } // namespace mff

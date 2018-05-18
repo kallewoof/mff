@@ -14,6 +14,8 @@
 
 namespace mff {
 
+rseq_container* g_rseq_ctr = nullptr;
+
 template<typename T>
 inline bool find_erase(std::vector<T>& v, const T& e) {
     auto it = std::find(std::begin(v), std::end(v), e);
@@ -40,7 +42,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 #define read_txseq_keep(known, seq, h) \
     if (known) { \
-        in >> COMPACTSIZE(seq); \
+        seq = seq_read(); \
     } else { \
         in >> h; \
         seq = seqs.count(h) ? seqs[h] : 0; \
@@ -48,7 +50,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 #define read_txseq(known, seq) \
     if (known) { \
-        in >> COMPACTSIZE(seq); \
+        seq = seq_read(); \
     } else { \
         uint256 h; \
         in >> h; \
@@ -65,8 +67,15 @@ inline FILE* setup_file(const char* path) {
 }
 
 reader::reader(const std::string path) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str())), in(in_fp, SER_DISK, 0) {
+    assert(g_rseq_ctr == nullptr);
+    g_rseq_ctr = this;
+    last_seq = 0;
     // out.debugme(true);
     mplinfo("start %s\n", path.c_str());
+}
+
+reader::~reader() {
+    g_rseq_ctr = nullptr;
 }
 
 void reader::apply_block(std::shared_ptr<block> b) {
@@ -211,8 +220,7 @@ bool reader::read_entry() {
 
         case TX_IN: {
             mplinfo("TX_IN(): "); fflush(stdout);
-            uint64_t seq = 0;
-            in >> COMPACTSIZE(seq);
+            uint64_t seq = seq_read();
             DSL(seq, "TX_IN\n");
             if (txs.count(seq)) {
                 txs[seq]->location = tx::location_in_mempool;
@@ -316,7 +324,7 @@ bool reader::read_entry() {
                 uint64_t count = ReadCompactSize(in);
                 mplinfo("%llu transactions\n", count);
                 for (uint64_t i = 0; i < count; ++i) {
-                    uint64_t seq = ReadCompactSize(in);
+                    uint64_t seq = seq_read();
                     mplinfo("%llu: seq = %llu\n", i, seq);
                     if (seq) {
                         assert(txs.count(seq));
@@ -335,6 +343,17 @@ bool reader::read_entry() {
     read_time(last_time);
     // showinfo = false;
     return true;
+}
+
+inline seq_t reader::seq_read() {
+    int64_t rseq;
+    in >> CVarInt<VarIntMode::SIGNED, int64_t>{rseq};
+    last_seq += rseq;
+    return last_seq;
+}
+
+inline void reader::seq_write(seq_t seq) {
+    assert(!"writing disallowed");
 }
 
 } // namespace mff

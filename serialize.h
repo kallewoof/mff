@@ -336,14 +336,14 @@ uint64_t ReadCompactSize(Stream& is)
  * negative numbers in a backwards compatible way, and additional modes could be
  * added to support different varint formats (e.g. zigzag encoding).
  */
-enum class VarIntMode { DEFAULT, NONNEGATIVE_SIGNED };
+enum class VarIntMode { DEFAULT, NONNEGATIVE_SIGNED, SIGNED };
 
 template <VarIntMode Mode, typename I>
 struct CheckVarIntMode {
     constexpr CheckVarIntMode()
     {
         static_assert(Mode != VarIntMode::DEFAULT || std::is_unsigned<I>::value, "Unsigned type required with mode DEFAULT.");
-        static_assert(Mode != VarIntMode::NONNEGATIVE_SIGNED || std::is_signed<I>::value, "Signed type required with mode NONNEGATIVE_SIGNED.");
+        static_assert((Mode != VarIntMode::NONNEGATIVE_SIGNED && Mode != VarIntMode::SIGNED) || std::is_signed<I>::value, "Signed type required with mode NONNEGATIVE_SIGNED or SIGNED.");
     }
 };
 
@@ -352,6 +352,7 @@ inline unsigned int GetSizeOfVarInt(I n)
 {
     CheckVarIntMode<Mode, I>();
     int nRet = 0;
+    if (Mode == VarIntMode::SIGNED) { assert((n << 1) >> 1 == n); n = (n < 0 ? -n : n) << 1; }
     while(true) {
         nRet++;
         if (n <= 0x7F)
@@ -368,6 +369,7 @@ template<typename Stream, VarIntMode Mode, typename I>
 void WriteVarInt(Stream& os, I n)
 {
     CheckVarIntMode<Mode, I>();
+    if (Mode == VarIntMode::SIGNED) { assert((n << 1) >> 1 == n); n = (n < 0 ? ((-n) << 1) | 1 : n << 1); }
     unsigned char tmp[(sizeof(n)*8+6)/7];
     int len=0;
     while(true) {
@@ -399,12 +401,16 @@ I ReadVarInt(Stream& is)
             }
             n++;
         } else {
+            if (Mode == VarIntMode::SIGNED) {
+                return (n & 1) ? -(n >> 1) : n >> 1;
+            }
             return n;
         }
     }
 }
 
 #define VARINT(obj, ...) WrapVarInt<__VA_ARGS__>(REF(obj))
+#define VARINTSIGNED(obj, ...) WrapVarInt<VarIntMode::SIGNED, __VA_ARGS__>(REF(obj))
 #define COMPACTSIZE(obj) CCompactSize(REF(obj))
 #define LIMITED_STRING(obj,n) LimitedString< n >(REF(obj))
 
