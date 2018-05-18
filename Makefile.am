@@ -23,6 +23,9 @@ noinst_PROGRAMS =
 BITCOIN_CORE_H = \
 	compat/byteswap.h \
 	compat/endian.h \
+	crypto/common.h \
+	crypto/sha256.h \
+	hash.h \
 	prevector.h \
 	serialize.h \
 	streams.h \
@@ -37,6 +40,7 @@ BITCOIN_CORE_H = \
 libbitcoin_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 libbitcoin_a_CXXFLAGS = $(AM_CXXFLAGS)
 libbitcoin_a_SOURCES = \
+	crypto/sha256.cpp \
 	support/cleanse.cpp \
 	uint256.cpp \
 	utilstrencodings.cpp \

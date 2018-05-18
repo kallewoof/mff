@@ -9,11 +9,14 @@
 #include <serialize.h>
 #include <tinyformat.h>
 #include <utilstrencodings.h>
+#include <hash.h>
 
 namespace tiny {
 
 typedef int64_t amount;
 static const amount COIN = 100000000;
+
+static const int SERIALIZE_TRANSACTION_NO_WITNESS = 0x40000000;
 
 struct outpoint {
     uint256 hash;
@@ -138,19 +141,13 @@ struct tx {
 
     tx() : vin(), vout(), version(2), locktime(0), hash() {}
 
-    template <typename Stream>
-    inline void Serialize(Stream& s) const {
-        serialize(s);
-    }
-
-    template <typename Stream>
-    inline void Unserialize(Stream& s) {
-        unserialize(s);
-    }
-
     friend bool operator==(const tx& a, const tx& b)
     {
         return a.hash == b.hash;
+    }
+
+    void UpdateHash() {
+        hash = SerializeHash(*this, SER_GETHASH, SERIALIZE_TRANSACTION_NO_WITNESS);
     }
 
     bool HasWitness() const
@@ -169,7 +166,7 @@ struct tx {
     }
 
     template<typename Stream>
-    inline void unserialize(Stream& s) {
+    inline void Unserialize(Stream& s) {
         s >> version;
         unsigned char flags = 0;
         vin.clear();
@@ -199,10 +196,11 @@ struct tx {
             throw std::ios_base::failure("Unknown transaction optional data");
         }
         s >> locktime;
+        UpdateHash();
     }
 
     template<typename Stream>
-    inline void serialize(Stream& s) {
+    inline void Serialize(Stream& s) const {
         s << version;
         unsigned char flags = 0;
         // Consistency check

@@ -2,6 +2,7 @@
 
 #include <txmempool_format.h>
 #include <cliargs.h>
+#include <tinytx.h>
 
 std::string time_string(int64_t time) {
     char buf[128];
@@ -34,6 +35,14 @@ struct tracked {
 };
 
 int main(int argc, char* const* argv) {
+    // sanity check
+    {
+        tiny::tx tx;
+        std::vector<uint8_t> data = ParseHex("0100000001e369193a3892832248b9f8aa82fb328d72ab586d8232e7abe328f4f7dac4cb82000000006a4730440220400ea18e4599c7ee3adf854e686e839f37018db417c0c159f0d06c0e5770a4330220510aa49debfb1a5e24f292c5a158584b62164e3a8e29e1477e599461fbde65c40121027b538a03778eea62a8f2c55aec9d8b94b4e5914edc244b7b298fd97ef6c4a9dcfdffffff025798bf07000000001976a914a737fcf80f8b79b53ef8ec8eb2e2cdf087aa701c88ac942dc878000000001976a9141feede8623007b60316b6166a35601805bad1cef88acdcfb0700");
+        CDataStream ds(data, SER_GETHASH, PROTOCOL_VERSION);
+        ds >> tx;
+        assert(tx.hash == uint256S("a9311d2a6b2272f90ac42296fefe89f22ba7bb5042e297f4fa8ae24e80da676a"));
+    }
     cliargs ca;
     ca.add_option("help", 'h', no_arg);
     ca.add_option("long", 'l', no_arg);
