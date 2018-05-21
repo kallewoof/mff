@@ -74,7 +74,7 @@ int main(int argc, char* const* argv) {
     uint64_t entries = 0;
     uint32_t nooutputiters = 0;
     do {
-        bool count = false;
+        bool count = true;
         for (const tracked& t : txids) {
             const uint256& txid = t.txid;
             if (reader.touched_txid(txid, count)) {

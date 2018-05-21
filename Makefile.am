@@ -48,7 +48,7 @@ libbitcoin_a_SOURCES = \
 
 # mff binary #
 mff_reader_SOURCES = \
-	mff.cpp \
+	mff-reader.cpp \
 	cliargs.h \
 	tinytx.h \
 	txmempool_format.cpp \
