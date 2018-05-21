@@ -53,6 +53,19 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
         sync();\
     } while (0)
 
+#define write_set_time(rel, time) do {\
+        if (rel & CMD::TIME_REL_BIT) {\
+            int64_t tfull = time - last_time;\
+            uint8_t t = tfull <= 255 ? tfull : 255;\
+            in << t;\
+            last_time += t;\
+        } else {\
+            last_time = time;\
+            in << last_time;\
+        }\
+        sync();\
+    } while (0)
+
 #define read_txseq_keep(known, seq, h) \
     if (known) { \
         seq = seq_read(); \
@@ -522,7 +535,7 @@ void mff_rseq::write_entry(entry* e) {
             mplerr("u8 = %u, cmd = %u\n", u8, cmd);
             assert(!"unknown command"); // todo: exceptionize
     }
-    write_time(u8);
+    write_set_time(u8, e->time);
 }
 
 inline seq_t mff_rseq::seq_read() {
