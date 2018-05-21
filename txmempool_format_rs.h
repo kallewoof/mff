@@ -2,49 +2,44 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TXMEMPOOL_FORMAT_H
-#define BITCOIN_TXMEMPOOL_FORMAT_H
+#ifndef BITCOIN_TXMEMPOOL_FORMAT_RS_H
+#define BITCOIN_TXMEMPOOL_FORMAT_RS_H
 
-#include <mff.h>
 #include <serialize.h>
 #include <streams.h>
 
+#include <mff.h>
+
 namespace mff {
 
-class rseq_container {
-public:
-    virtual seq_t seq_read() = 0;
-    virtual void seq_write(seq_t seq) = 0;
-};
-
-extern rseq_container* g_rseq_ctr;
-
 template <typename Stream>
-class rseq_adapter: public adapter<Stream> {
+class reused_sequence_adapter: public adapter<Stream> {
 public:
     void serialize_outpoint(Stream& s, const outpoint& o) {
         Serialize(s, COMPACTSIZE(o.n));
         if (o.known) {
-            g_rseq_ctr->seq_write(o.seq);
+            Serialize(s, o.seq); // TODO: bug but leaving as is for now
         } else {
             Serialize(s, o.txid);
         }
     }
+
     void deserialize_outpoint(Stream& s, outpoint& o) {
         Unserialize(s, COMPACTSIZE(o.n));
         if (o.known) {
-            o.seq = g_rseq_ctr->seq_read();
+            Unserialize(s, o.seq); // TODO: bug but leaving as is for now
         } else {
             Unserialize(s, o.txid);
         }
     }
+
     void serialize_tx(Stream& s, const tx& t) {
         // printf("serializing tx\n");
         // if (!ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         Serialize(s, t.id);
         // if (ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         // if (!ser_action.ForRead()) printf("- seq: %llu\n", seq);
-        g_rseq_ctr->seq_write(t.seq);
+        Serialize(s, COMPACTSIZE(t.seq));
         // if (ser_action.ForRead()) printf("- seq: %llu\n", seq);
         // if (!ser_action.ForRead()) printf("- weight: %llu\n", weight);
         Serialize(s, COMPACTSIZE(t.weight));
@@ -73,7 +68,7 @@ public:
         Unserialize(s, t.id);
         // if (ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
         // if (!ser_action.ForRead()) printf("- seq: %llu\n", seq);
-        t.seq = g_rseq_ctr->seq_read();
+        Unserialize(s, COMPACTSIZE(t.seq));
         // if (ser_action.ForRead()) printf("- seq: %llu\n", seq);
         // if (!ser_action.ForRead()) printf("- weight: %llu\n", weight);
         Unserialize(s, COMPACTSIZE(t.weight));
@@ -106,7 +101,7 @@ public:
         if (b.is_known) return;
         Serialize(s, COMPACTSIZE(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            g_rseq_ctr->seq_write(b.known[i]);
+            Serialize(s, COMPACTSIZE(b.known[i]));
         }
         Serialize(s, b.unknown);
     }
@@ -117,30 +112,26 @@ public:
         Unserialize(s, COMPACTSIZE(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_rseq_ctr->seq_read();
+            Unserialize(s, COMPACTSIZE(b.known[i]));
         }
         Unserialize(s, b.unknown);
     }
 };
 
-class mff_rseq: public mff, public rseq_container {
+class mff_rs: public mff {
 private:
-    int64_t lastflush;
     FILE* in_fp;
     CAutoFile in;
-    rseq_adapter<CAutoFile> serializer;
+    reused_sequence_adapter<CAutoFile> serializer;
 
     void apply_block(std::shared_ptr<block> b);
     void undo_block_at_height(uint32_t height);
     entry last_entry;
-    inline void sync();
 public:
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
     chain active_chain;
     // int64_t last_time;
-    uint64_t last_seq;
-
     CMD last_cmd;
     std::vector<seq_t> last_seqs;
     seq_t replacement_seq; // for TX_INVALID; points to the new txid
@@ -154,19 +145,14 @@ public:
     std::vector<uint8_t> last_invalidated_txhex; // for TX_INVALID
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
-    mff_rseq(const std::string path = "", bool readonly = true);
-    ~mff_rseq();
+    mff_rs(const std::string path = "", bool readonly = true);
     entry* read_entry() override;
-    void write_entry(entry* e) override;
+    // void write_entry(entry* e) override;
     uint256 get_replacement_txid() const;
     uint256 get_invalidated_txid() const;
-
-    seq_t seq_read() override;
-    void seq_write(seq_t seq) override;
-
     void flush() override { fflush(in_fp); }
 };
 
 } // namespace mff
 
-#endif // BITCOIN_TXMEMPOOL_FORMAT_H
+#endif // BITCOIN_TXMEMPOOL_FORMAT_RS_H

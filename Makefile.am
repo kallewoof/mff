@@ -15,7 +15,7 @@ EXTRA_LIBRARIES += \
 
 # lib_LTLIBRARIES = $(LIBBITCOIN)
 
-bin_PROGRAMS = mff-reader
+bin_PROGRAMS = mff-reader mff-conv
 noinst_PROGRAMS =
 
 .PHONY: FORCE check-symbols check-security
@@ -34,7 +34,8 @@ BITCOIN_CORE_H = \
 	support/cleanse.h \
 	tinyformat.h \
 	uint256.h \
-	utilstrencodings.h
+	utilstrencodings.h \
+    utiltime.h
 
 # bitcoin: shared between all the tools
 libbitcoin_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
@@ -44,9 +45,10 @@ libbitcoin_a_SOURCES = \
 	support/cleanse.cpp \
 	uint256.cpp \
 	utilstrencodings.cpp \
+    utiltime.cpp \
     $(BITCOIN_CORE_H)
 
-# mff binary #
+# mff-reader binary #
 mff_reader_SOURCES = \
 	mff-reader.cpp \
 	cliargs.h \
@@ -60,8 +62,24 @@ mff_reader_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
 mff_reader_LDADD = \
 	$(LIBBITCOIN)
 
+# mff-conv binary #
+mff_conv_SOURCES = \
+	mff-conv.cpp \
+	cliargs.h \
+	tinytx.h \
+	txmempool_format.cpp \
+	txmempool_format.h \
+    txmempool_format_rs.cpp \
+    txmempool_format_rs.h \
+mff_conv_CPPFLAGS = $(AM_CPPFLAGS)
+mff_conv_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+mff_conv_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
+
+mff_conv_LDADD = \
+	$(LIBBITCOIN)
+
 clean-local:
-	-rm -f config.h $(LIBBITCOIN) $(LIBMFF)
+	-rm -f config.h $(LIBBITCOIN)
 
 .rc.o:
 	@test -f $(WINDRES)

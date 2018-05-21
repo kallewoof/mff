@@ -68,7 +68,7 @@ int main(int argc, char* const* argv) {
     for (size_t i = 1; i < ca.l.size(); ++i) {
         txids.insert(tracked{uint256S(ca.l[i]), depth});
     }
-    mff::reader reader(infile);
+    mff::mff_rseq reader(infile);
     reader.read_entry();
     printf("%s: ---log starts---\n", time_string(reader.last_time).c_str());
     uint64_t entries = 0;
