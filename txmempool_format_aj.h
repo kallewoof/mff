@@ -64,7 +64,7 @@ public:
             // if (!ser_action.ForRead()) printf("--- state: %u\n", state[i]);
             Serialize(s, t.state[i]);
             // if (ser_action.ForRead()) printf("--- state: %u\n", state[i]);
-            if ((t.state[i] & 3) != outpoint::state_confirmed && !(t.state[i] & outpoint::state_coinbase_flag)) {
+            if (t.state[i] != outpoint::state_confirmed && t.state[i] != outpoint::state_coinbase) {
                 // if (!ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
                 t.vin[i].serialize(s, this);
                 // if (ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
@@ -95,10 +95,10 @@ public:
             // if (!ser_action.ForRead()) printf("--- state: %u\n", state[i]);
             Unserialize(s, t.state[i]);
             // if (ser_action.ForRead()) printf("--- state: %u\n", state[i]);
-            assert(t.state[i] <= (outpoint::state_coinbase_flag | outpoint::state_confirmed));
-            if (t.state[i] & outpoint::state_coinbase_flag) {
+            assert(t.state[i] <= outpoint::state_coinbase);
+            if (t.state[i] == outpoint::state_coinbase) {
                 t.vin[i] = outpoint::coinbase();
-            } else if ((t.state[i] & 3) != outpoint::state_confirmed) {
+            } else if (t.state[i] != outpoint::state_confirmed) {
                 t.vin[i] = outpoint(t.state[i] == outpoint::state_known);
                 // if (!ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
                 t.vin[i].deserialize(s, this);

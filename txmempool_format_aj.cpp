@@ -496,9 +496,12 @@ std::shared_ptr<tx> mff_aj::register_tx(tiny::tx& tt) {
         bool known = seqs.count(prevout.hash);
         seq_t seq = known ? seqs[prevout.hash] : 0;
         assert(!known || seq != 0);
-        bool confirmed = known && txs[seq]->location == tx::location_confirmed;
-        t->state[i] = confirmed ? outpoint::state_confirmed : known ? outpoint::state_known : outpoint::state_unknown;
-        if (tt.IsCoinBase()) t->state[i] |= outpoint::state_coinbase_flag;
+        if (tt.IsCoinBase()) {
+            t->state[i] = outpoint::state_coinbase;
+        } else {
+            bool confirmed = known && txs[seq]->location == tx::location_confirmed;
+            t->state[i] = confirmed ? outpoint::state_confirmed : known ? outpoint::state_known : outpoint::state_unknown;
+        }
         t->vin[i] = known ? outpoint(prevout.n, seq) : outpoint(prevout.n, prevout.hash);
         // printf("- vin %llu = %s n=%d, seq=%llu, hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
     }

@@ -64,10 +64,10 @@ public:
             DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
             DEBUG_SER("--- state: %u\n", t.state[i]);
             Serialize(s, t.state[i]);
-            if (t.state[i] & outpoint::state_coinbase_flag) {
+            if (t.state[i] == outpoint::state_coinbase) {
                 DEBUG_SER("--- vin: (coinbase)\n");
             }
-            if ((t.state[i] & 3) != outpoint::state_confirmed && !(t.state[i] & outpoint::state_coinbase_flag)) {
+            if (t.state[i] != outpoint::state_confirmed && t.state[i] != outpoint::state_coinbase) {
                 // if (!ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
                 DEBUG_SER("--- vin: %s\n", t.vin[i].to_string().c_str());
                 t.vin[i].serialize(s, this);
@@ -92,11 +92,11 @@ public:
             DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
             Unserialize(s, t.state[i]);
             DEBUG_SER("--- state: %u\n", t.state[i]);
-            assert(t.state[i] <= (outpoint::state_coinbase_flag | outpoint::state_confirmed));
-            if (t.state[i] & outpoint::state_coinbase_flag) {
+            assert(t.state[i] <= outpoint::state_coinbase);
+            if (t.state[i] == outpoint::state_coinbase) {
                 t.vin[i] = outpoint::coinbase();
                 DEBUG_SER("--- vin: (coinbase) %s\n", t.vin[i].to_string().c_str());
-            } else if ((t.state[i] & 3) != outpoint::state_confirmed) {
+            } else if (t.state[i] != outpoint::state_confirmed) {
                 t.vin[i] = outpoint(t.state[i] == outpoint::state_known);
                 t.vin[i].deserialize(s, this);
                 DEBUG_SER("--- vin: %s\n", t.vin[i].to_string().c_str());

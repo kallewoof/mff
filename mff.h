@@ -60,10 +60,10 @@ public:
 class outpoint {
 public:
     enum state: uint8_t {
-        state_unknown       = 0, //  00
-        state_known         = 1, //  01
-        state_confirmed     = 2, //  10
-        state_coinbase_flag = 4, // 1--
+        state_unknown   = 0,
+        state_known     = 1,
+        state_confirmed = 2,
+        state_coinbase  = 3,
     };
     
     outpoint(bool known_in = false)                 : known(known_in), n(0),    seq(0),      txid(uint256()) {}
