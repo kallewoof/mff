@@ -246,6 +246,11 @@ struct tx {
             str += "    " + tx_out.ToString() + "\n";
         return str;
     }
+
+    inline int64_t GetWeight() const {
+        #define WITNESS_SCALE_FACTOR 4
+        return GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION);
+    }
 };
 
 }

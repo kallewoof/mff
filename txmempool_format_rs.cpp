@@ -87,9 +87,9 @@ inline FILE* setup_file(const char* path, bool readonly) {
     return fp;
 }
 
-mff_rs::mff_rs(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
+mff_rs::mff_rs(const std::string path, bool readonly) : last_entry(this), in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
     // out.debugme(true);
-    last_entry.sds = this;
+    entry_counter = 0;
     mplinfo("start %s\n", path.c_str());
 }
 
@@ -193,6 +193,7 @@ uint256 mff_rs::get_invalidated_txid() const {
 
 entry* mff_rs::read_entry() {
     // long x = ftell(in_fp); showinfo = false; x > 30304207 && x < 30305869;
+    entry_counter++;
     uint8_t u8;
     CMD cmd;
     bool known, timerel;

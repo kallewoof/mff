@@ -14,7 +14,15 @@
 
 namespace mff {
 
-rseq_container* g_rseq_ctr = nullptr;
+rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
+size_t initialized_rseq_ctrs = 0;
+
+inline rseq_container* get_rseq_ctr(size_t idx) {
+    while (idx >= initialized_rseq_ctrs) {
+        g_rseq_ctr[initialized_rseq_ctrs++] = nullptr;
+    }
+    return g_rseq_ctr[idx];
+}
 
 template<typename T>
 inline bool find_erase(std::vector<T>& v, const T& e) {
@@ -24,9 +32,9 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
     return true;
 }
 
-// bool showinfo = false;
-#define mplinfo_(args...) // if (showinfo) { printf(args); }
-#define mplinfo(args...) // if (showinfo) { printf("[MPL::info] " args); }
+// bool showinfo = true;
+#define mplinfo_(args...) //if (showinfo) { printf(args); }
+#define mplinfo(args...) //if (showinfo) { printf("[MPL::info] " args); }
 #define mplwarn(args...) printf("[MPL::warn] " args)
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
 
@@ -102,20 +110,26 @@ inline FILE* setup_file(const char* path, bool readonly) {
     return fp;
 }
 
-mff_rseq::mff_rseq(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
-    assert(g_rseq_ctr == nullptr);
-    g_rseq_ctr = this;
+template<int I>
+mff_rseq<I>::mff_rseq(const std::string path, bool readonly) : last_entry(this), in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
+    assert(get_rseq_ctr(I) == nullptr);
+    g_rseq_ctr[I] = this;
+    entry_counter = 0;
     last_seq = 0;
+    nextseq = 1;
     lastflush = GetTime();
     // out.debugme(true);
     mplinfo("start %s\n", path.c_str());
 }
 
-mff_rseq::~mff_rseq() {
-    g_rseq_ctr = nullptr;
+template<int I>
+mff_rseq<I>::~mff_rseq() {
+    g_rseq_ctr[I] = nullptr;
 }
 
-void mff_rseq::apply_block(std::shared_ptr<block> b) {
+template<int I>
+void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
+    // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
         mplwarn("dealing with TX_UNCONF missing bug 20180502153142\n");
@@ -139,7 +153,8 @@ void mff_rseq::apply_block(std::shared_ptr<block> b) {
     }
 }
 
-void mff_rseq::undo_block_at_height(uint32_t height) {
+template<int I>
+void mff_rseq<I>::undo_block_at_height(uint32_t height) {
     mplinfo("undo block %u\n", height);
     // we need to unmark confirmed transactions
     assert(height == active_chain.height);
@@ -164,7 +179,8 @@ inline std::string bits(uint8_t u) {
 
 // static uint256 foo = uint256S("163ee79aa165df2dbd552d41e89abb266cf76b0763504e6ef582cb6df2e0befc");
 
-seq_t mff_rseq::touched_txid(const uint256& txid, bool count) {
+template<int I>
+seq_t mff_rseq<I>::touched_txid(const uint256& txid, bool count) {
     // static int calls = 0;calls++;
     if (count) {
         std::set<uint256> counted;
@@ -205,15 +221,19 @@ seq_t mff_rseq::touched_txid(const uint256& txid, bool count) {
     return 0;
 }
 
-uint256 mff_rseq::get_replacement_txid() const {
+template<int I>
+uint256 mff_rseq<I>::get_replacement_txid() const {
     return replacement_seq && txs.count(replacement_seq) ? txs.at(replacement_seq)->id : replacement_txid;
 }
 
-uint256 mff_rseq::get_invalidated_txid() const {
+template<int I>
+uint256 mff_rseq<I>::get_invalidated_txid() const {
     return invalidated_seq && txs.count(invalidated_seq) ? txs.at(invalidated_seq)->id : invalidated_txid;
 }
 
-entry* mff_rseq::read_entry() {
+template<int I>
+entry* mff_rseq<I>::read_entry() {
+    entry_counter++;
     uint8_t u8;
     CMD cmd;
     bool known, timerel;
@@ -222,8 +242,8 @@ entry* mff_rseq::read_entry() {
     } catch (std::ios_base::failure& f) {
         return nullptr;
     }
-    last_cmd = cmd = (CMD)(u8 & 0x1f); // 0b0001 1111
-    known = (u8 >> 6) & 1;
+    last_entry.cmd = last_cmd = cmd = (CMD)(u8 & 0x1f); // 0b0001 1111
+    last_entry.known = known = (u8 >> 6) & 1;
     timerel = (u8 >> 7) & 1;
     last_seqs.clear();
     switch (cmd) {
@@ -237,13 +257,14 @@ entry* mff_rseq::read_entry() {
             auto t = std::make_shared<tx>();
             serializer.deserialize_tx(in, *t);
             // in >> tser;
-            last_recorded_tx = t;
+            last_entry.tx = last_recorded_tx = t;
             DSL(t->seq, "TX_REC\n");
             if (txs.count(t->seq)) {
                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
             }
             txs[t->seq] = t;
             seqs[t->id] = t->seq;
+            nextseq = std::max(nextseq, t->seq + 1);
             last_seqs.push_back(t->seq);
             for (const auto& prevout : t->vin) {
                 if (prevout.is_known()) {
@@ -259,6 +280,8 @@ entry* mff_rseq::read_entry() {
             mplinfo("TX_IN(): "); fflush(stdout);
             uint64_t seq = seq_read();
             DSL(seq, "TX_IN\n");
+            assert(txs.count(seq));
+            last_entry.tx = last_recorded_tx = txs[seq];
             if (txs.count(seq)) {
                 txs[seq]->location = tx::location_in_mempool;
             }
@@ -276,11 +299,12 @@ entry* mff_rseq::read_entry() {
                 // in >> b;
                 assert(blocks.count(b.hash));
                 // l1("block %u=%s\n", b.height, b.hash.ToString().c_str());
-                apply_block(blocks[b.hash]);
+                apply_block(last_entry.block_in = blocks[b.hash]);
             } else {
                 auto b = std::make_shared<block>();
                 serializer.deserialize_block(in, *b);
                 // in >> *b;
+                last_entry.block_in = b;
                 blocks[b->hash] = b;
                 // l1("block %u=%s\n", b->height, b->hash.ToString().c_str());
                 apply_block(b);
@@ -298,9 +322,9 @@ entry* mff_rseq::read_entry() {
             in >> reason;
             assert(txs.count(seq));
             last_out_reason = reason;
-            auto t = txs[seq];
+            auto t = last_entry.tx = txs[seq];
             t->location = tx::location_discarded;
-            t->out_reason = (tx::out_reason_enum)reason;
+            last_entry.out_reason = t->out_reason = (tx::out_reason_enum)reason;
             mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
             break;
         }
@@ -316,19 +340,23 @@ entry* mff_rseq::read_entry() {
             seq_t tx_cause(0);
             mplinfo_("--- read_txseq(%d, tx_invalid)\n", known);
             read_txseq_keep(known, tx_invalid, invalidated_txid);
+            assert(tx_invalid);
+            last_entry.tx = txs[tx_invalid];
             invalidated_seq = tx_invalid;
             last_seqs.push_back(tx_invalid);
             mplinfo_("--- state\n");
             in >> state;
-            bool cause_known = (state >> 6) & 1;
+            bool cause_known = last_entry.invalid_cause_known = (state >> 6) & 1;
             state &= 0x1f;
             last_invalid_state = state;
+            last_entry.invalid_reason = (tx::invalid_reason_enum)state;
             mplinfo_("--- state = %d (cause_known = %d)\n", state, cause_known);
             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
                 read_txseq_keep(cause_known, tx_cause, replacement_txid);
                 mplinfo_("--- read_txseq(%d, tx_cause) = %llu\n", cause_known, tx_cause);
                 last_seqs.push_back(tx_cause);
                 replacement_seq = tx_cause;
+                last_entry.invalid_replacement = replacement_seq ? txs[replacement_seq]->id : replacement_txid;
             }
             mplinfo_("----- tx deserialization begins -----\n");
             long txhex_start = ftell(in_fp);
@@ -338,6 +366,8 @@ entry* mff_rseq::read_entry() {
             last_invalidated_txhex.resize(txhex_end - txhex_start);
             fread(last_invalidated_txhex.data(), 1, txhex_end - txhex_start, in_fp);
             assert(ftell(in_fp) == txhex_end);
+            last_entry.invalid_tinytx = &last_invalidated_tx;
+            last_entry.invalid_txhex = &last_invalidated_txhex;
 
             if (tx_invalid) {
                 auto t = txs[tx_invalid];
@@ -361,18 +391,21 @@ entry* mff_rseq::read_entry() {
             mplinfo("TX_UNCONF(): "); fflush(stdout);
             uint32_t height;
             in >> height;
+            last_entry.unconf_height = height;
             if (known) {
                 mplinfo_("known, height=%u\n", height);
                 undo_block_at_height(height);
             } else {
                 mplinfo_("unknown, height=%u\n", height);
                 uint64_t count = ReadCompactSize(in);
+                last_entry.unconf_txids.resize(count);
                 mplinfo("%llu transactions\n", count);
                 for (uint64_t i = 0; i < count; ++i) {
                     uint64_t seq = seq_read();
                     mplinfo("%llu: seq = %llu\n", i, seq);
                     if (seq) {
                         assert(txs.count(seq));
+                        last_entry.unconf_txids[i] = txs[seq]->id;
                         last_seqs.push_back(seq);
                         txs[seq]->location = tx::location_in_mempool;
                     }
@@ -386,11 +419,19 @@ entry* mff_rseq::read_entry() {
             assert(!"unknown command"); // todo: exceptionize
     }
     read_time(last_time);
+    last_entry.time = last_time;
     // showinfo = false;
     return &last_entry;
 }
 
-void mff_rseq::write_entry(entry* e) {
+template<int I>
+seq_t mff_rseq<I>::claim_seq(const uint256& txid) {
+    if (seqs.count(txid)) return seqs[txid];
+    return nextseq++;
+}
+
+template<int I>
+void mff_rseq<I>::write_entry(entry* e) {
     uint8_t u8;
     CMD cmd = e->cmd;
     bool known, timerel;
@@ -538,25 +579,55 @@ void mff_rseq::write_entry(entry* e) {
     write_set_time(u8, e->time);
 }
 
-inline seq_t mff_rseq::seq_read() {
+template<int I>
+inline seq_t mff_rseq<I>::seq_read() {
     int64_t rseq;
     in >> CVarInt<VarIntMode::SIGNED, int64_t>{rseq};
     last_seq += rseq;
     return last_seq;
 }
 
-inline void mff_rseq::seq_write(seq_t seq) {
+template<int I>
+inline void mff_rseq<I>::seq_write(seq_t seq) {
     int64_t rseq = (seq > last_seq ? seq - last_seq : -int64_t(last_seq - seq));
     in << CVarInt<VarIntMode::SIGNED, int64_t>(rseq);
     last_seq = seq;
 }
 
-inline void mff_rseq::sync() {
+template<int I>
+inline void mff_rseq<I>::sync() {
     int64_t now = GetTime();
     if (lastflush + 10 < now) {
-        printf("*\b"); fflush(stdout);
+        // printf("*\b"); fflush(stdout);
         fflush(in_fp);
         lastflush = now;
     }
 }
+
+template void mff_rseq<0>::apply_block(std::shared_ptr<block> b);
+template void mff_rseq<0>::undo_block_at_height(uint32_t height);
+template seq_t mff_rseq<0>::touched_txid(const uint256& txid, bool count);
+template mff_rseq<0>::mff_rseq(const std::string path, bool readonly);
+template mff_rseq<0>::~mff_rseq();
+template entry* mff_rseq<0>::read_entry();
+template void mff_rseq<0>::write_entry(entry* e);
+template seq_t mff_rseq<0>::claim_seq(const uint256& txid);
+template uint256 mff_rseq<0>::get_replacement_txid() const;
+template uint256 mff_rseq<0>::get_invalidated_txid() const;
+template seq_t mff_rseq<0>::seq_read();
+template void mff_rseq<0>::seq_write(seq_t seq);
+
+template void mff_rseq<1>::apply_block(std::shared_ptr<block> b);
+template void mff_rseq<1>::undo_block_at_height(uint32_t height);
+template seq_t mff_rseq<1>::touched_txid(const uint256& txid, bool count);
+template mff_rseq<1>::mff_rseq(const std::string path, bool readonly);
+template mff_rseq<1>::~mff_rseq();
+template entry* mff_rseq<1>::read_entry();
+template void mff_rseq<1>::write_entry(entry* e);
+template seq_t mff_rseq<1>::claim_seq(const uint256& txid);
+template uint256 mff_rseq<1>::get_replacement_txid() const;
+template uint256 mff_rseq<1>::get_invalidated_txid() const;
+template seq_t mff_rseq<1>::seq_read();
+template void mff_rseq<1>::seq_write(seq_t seq);
+
 } // namespace mff

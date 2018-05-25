@@ -17,86 +17,89 @@ public:
     virtual void seq_write(seq_t seq) = 0;
 };
 
-extern rseq_container* g_rseq_ctr;
+#define MAX_RSEQ_CONTAINERS 2
+extern rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
 
-template <typename Stream>
+template <typename Stream, int I>
 class rseq_adapter: public adapter<Stream> {
 public:
+    #define DEBUG_SER(args...) // printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
+        DEBUG_SER("serializing %s outpoint\n", o.known ? "known" : "unknown");
+        DEBUG_SER("o.n=%llu\n", o.n);
         Serialize(s, COMPACTSIZE(o.n));
         if (o.known) {
-            g_rseq_ctr->seq_write(o.seq);
+            DEBUG_SER("o.seq = %llu\n", o.seq);
+            g_rseq_ctr[I]->seq_write(o.seq);
         } else {
+            DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
             Serialize(s, o.txid);
         }
     }
     void deserialize_outpoint(Stream& s, outpoint& o) {
+        DEBUG_SER("deserializing %s outpoint\n", o.known ? "known" : "unknown");
         Unserialize(s, COMPACTSIZE(o.n));
+        DEBUG_SER("o.n=%llu\n", o.n);
         if (o.known) {
-            o.seq = g_rseq_ctr->seq_read();
+            o.seq = g_rseq_ctr[I]->seq_read();
+            DEBUG_SER("o.seq = %llu\n", o.seq);
         } else {
             Unserialize(s, o.txid);
+            DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
         }
     }
     void serialize_tx(Stream& s, const tx& t) {
-        // printf("serializing tx\n");
-        // if (!ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
+        DEBUG_SER("serializing tx\n");
+        DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
         Serialize(s, t.id);
-        // if (ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
-        // if (!ser_action.ForRead()) printf("- seq: %llu\n", seq);
-        g_rseq_ctr->seq_write(t.seq);
-        // if (ser_action.ForRead()) printf("- seq: %llu\n", seq);
-        // if (!ser_action.ForRead()) printf("- weight: %llu\n", weight);
+        DEBUG_SER("- seq: %llu\n", t.seq);
+        g_rseq_ctr[I]->seq_write(t.seq);
+        DEBUG_SER("- weight: %llu\n", t.weight);
         Serialize(s, COMPACTSIZE(t.weight));
-        // if (ser_action.ForRead()) printf("- weight: %llu\n", weight);
-        // if (!ser_action.ForRead()) printf("- fee: %llu\n", fee);
+        DEBUG_SER("- fee: %llu\n", t.fee);
         Serialize(s, COMPACTSIZE(t.fee));
-        // if (ser_action.ForRead()) printf("- fee: %llu\n", fee);
-        // if (!ser_action.ForRead()) printf("- inputs: %llu\n", inputs);
+        DEBUG_SER("- inputs: %llu\n", t.inputs);
         Serialize(s, COMPACTSIZE(t.inputs));
-        // if (ser_action.ForRead()) printf("- inputs: %llu\n", inputs);
         for (uint64_t i = 0; i < t.inputs; ++i) {
-            // printf("--- input #%llu/%llu\n", i+1, inputs);
-            // if (!ser_action.ForRead()) printf("--- state: %u\n", state[i]);
+            DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
+            DEBUG_SER("--- state: %u\n", t.state[i]);
             Serialize(s, t.state[i]);
-            // if (ser_action.ForRead()) printf("--- state: %u\n", state[i]);
-            if (t.state[i] != outpoint::state_confirmed) {
+            if (t.state[i] & outpoint::state_coinbase_flag) {
+                DEBUG_SER("--- vin: (coinbase)\n");
+            }
+            if ((t.state[i] & 3) != outpoint::state_confirmed && !(t.state[i] & outpoint::state_coinbase_flag)) {
                 // if (!ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
+                DEBUG_SER("--- vin: %s\n", t.vin[i].to_string().c_str());
                 t.vin[i].serialize(s, this);
-                // if (ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
             }
         }
     }
     void deserialize_tx(Stream& s, tx& t) {
-        // printf("serializing tx\n");
-        // if (!ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
+        DEBUG_SER("deserializing tx\n");
         Unserialize(s, t.id);
-        // if (ser_action.ForRead()) printf("- id: %s\n", id.ToString().c_str());
-        // if (!ser_action.ForRead()) printf("- seq: %llu\n", seq);
-        t.seq = g_rseq_ctr->seq_read();
-        // if (ser_action.ForRead()) printf("- seq: %llu\n", seq);
-        // if (!ser_action.ForRead()) printf("- weight: %llu\n", weight);
+        DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
+        t.seq = g_rseq_ctr[I]->seq_read();
+        DEBUG_SER("- seq: %llu\n", t.seq);
         Unserialize(s, COMPACTSIZE(t.weight));
-        // if (ser_action.ForRead()) printf("- weight: %llu\n", weight);
-        // if (!ser_action.ForRead()) printf("- fee: %llu\n", fee);
+        DEBUG_SER("- weight: %llu\n", t.weight);
         Unserialize(s, COMPACTSIZE(t.fee));
-        // if (ser_action.ForRead()) printf("- fee: %llu\n", fee);
-        // if (!ser_action.ForRead()) printf("- inputs: %llu\n", inputs);
+        DEBUG_SER("- fee: %llu\n", t.fee);
         Unserialize(s, COMPACTSIZE(t.inputs));
-        // if (ser_action.ForRead()) printf("- inputs: %llu\n", inputs);
+        DEBUG_SER("- inputs: %llu\n", t.inputs);
         t.state.resize(t.inputs);
         t.vin.resize(t.inputs);
         for (uint64_t i = 0; i < t.inputs; ++i) {
-            // printf("--- input #%llu/%llu\n", i+1, inputs);
-            // if (!ser_action.ForRead()) printf("--- state: %u\n", state[i]);
+            DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
             Unserialize(s, t.state[i]);
-            // if (ser_action.ForRead()) printf("--- state: %u\n", state[i]);
-            assert(t.state[i] <= outpoint::state_confirmed);
-            if (t.state[i] != outpoint::state_confirmed) {
+            DEBUG_SER("--- state: %u\n", t.state[i]);
+            assert(t.state[i] <= (outpoint::state_coinbase_flag | outpoint::state_confirmed));
+            if (t.state[i] & outpoint::state_coinbase_flag) {
+                t.vin[i] = outpoint::coinbase();
+                DEBUG_SER("--- vin: (coinbase) %s\n", t.vin[i].to_string().c_str());
+            } else if ((t.state[i] & 3) != outpoint::state_confirmed) {
                 t.vin[i] = outpoint(t.state[i] == outpoint::state_known);
-                // if (!ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
                 t.vin[i].deserialize(s, this);
-                // if (ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
+                DEBUG_SER("--- vin: %s\n", t.vin[i].to_string().c_str());
             }
         }
     }
@@ -106,7 +109,7 @@ public:
         if (b.is_known) return;
         Serialize(s, COMPACTSIZE(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            g_rseq_ctr->seq_write(b.known[i]);
+            g_rseq_ctr[I]->seq_write(b.known[i]);
         }
         Serialize(s, b.unknown);
     }
@@ -117,18 +120,19 @@ public:
         Unserialize(s, COMPACTSIZE(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_rseq_ctr->seq_read();
+            b.known[i] = g_rseq_ctr[I]->seq_read();
         }
         Unserialize(s, b.unknown);
     }
 };
 
+template<int I>
 class mff_rseq: public mff, public rseq_container {
 private:
     int64_t lastflush;
     FILE* in_fp;
     CAutoFile in;
-    rseq_adapter<CAutoFile> serializer;
+    rseq_adapter<CAutoFile, I> serializer;
 
     void apply_block(std::shared_ptr<block> b);
     void undo_block_at_height(uint32_t height);
@@ -138,8 +142,8 @@ public:
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
     chain active_chain;
-    // int64_t last_time;
     uint64_t last_seq;
+    uint64_t nextseq;
 
     CMD last_cmd;
     std::vector<seq_t> last_seqs;
@@ -158,6 +162,8 @@ public:
     ~mff_rseq();
     entry* read_entry() override;
     void write_entry(entry* e) override;
+    seq_t claim_seq(const uint256& txid) override;
+    long tell() override { return ftell(in_fp); }
     uint256 get_replacement_txid() const;
     uint256 get_invalidated_txid() const;
 

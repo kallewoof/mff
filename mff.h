@@ -60,15 +60,28 @@ public:
 class outpoint {
 public:
     enum state: uint8_t {
-        state_unknown   = 0,
-        state_known     = 1,
-        state_confirmed = 2,
+        state_unknown       = 0, //  00
+        state_known         = 1, //  01
+        state_confirmed     = 2, //  10
+        state_coinbase_flag = 4, // 1--
     };
     
     outpoint(bool known_in = false)                 : known(known_in), n(0),    seq(0),      txid(uint256()) {}
     outpoint(uint64_t n_in, seq_t seq_in)           : known(true),     n(n_in), seq(seq_in), txid(uint256()) {}
     outpoint(uint64_t n_in, const uint256& txid_in) : known(false),    n(n_in), seq(0),      txid(txid_in)   {}
     outpoint(const outpoint& o) : known(o.known), n(o.n), seq(o.seq), txid(o.txid) {}
+
+    static inline outpoint coinbase() {
+        return outpoint(0xffffffff, uint256());
+    }
+
+    bool operator==(const outpoint& other) const {
+        return known == other.known && (
+            known
+            ? seq == other.seq
+            : txid == other.txid
+        );
+    }
 
     bool is_known()           const { return known; }
     const uint256& get_txid() const { assert(!known); return txid; }
@@ -121,6 +134,7 @@ struct tx {
     uint64_t inputs;
     std::vector<uint8_t> state;
     std::vector<outpoint> vin;
+    std::vector<uint64_t> amounts; // memory only
     uint32_t cool_height;
 
     inline double feerate() const { return double(fee)/double(vsize()); }
@@ -157,6 +171,12 @@ struct tx {
         state = t.state;
         for (const outpoint& o : t.vin) {
             vin.emplace_back(o);
+            const outpoint& ocopy = vin.back();
+            assert(&o != &ocopy);
+            assert(o == ocopy);
+        }
+        for (uint64_t a : t.amounts) {
+            amounts.push_back(a);
         }
     }
 
@@ -212,9 +232,11 @@ class seqdict_server {
 public:
     seqdict_t seqs;
     txs_t txs;
+    virtual seq_t claim_seq(const uint256& txid) = 0;
 };
 
 struct entry {
+    entry(seqdict_server* sds_in) : sds(sds_in) {}
     seqdict_server* sds;
     CMD cmd;
     bool known;
@@ -225,7 +247,7 @@ struct entry {
     tx::invalid_reason_enum invalid_reason;
     bool invalid_cause_known;
     uint256 invalid_replacement; // TX_INVALID
-    tiny::tx* invalid_tinytx; // TX_INVALID
+    const tiny::tx* invalid_tinytx; // TX_INVALID
     std::vector<uint8_t>* invalid_txhex; // TX_INVALID
     uint32_t unconf_height;
     uint64_t unconf_count; // for known=false
@@ -246,9 +268,14 @@ struct entry {
 class mff: public seqdict_server {
 public:
     int64_t last_time;
+    uint64_t entry_counter;
+    virtual long tell() = 0;
     virtual void flush() = 0;
     virtual entry* read_entry() = 0;
     virtual void write_entry(entry* e) {
+        assert(!"not implemented");
+    }
+    virtual seq_t claim_seq(const uint256& txid) override {
         assert(!"not implemented");
     }
     uint8_t prot(CMD cmd, bool known) {
@@ -267,6 +294,7 @@ public:
             return txs[seqs[t->id]];
         }
         std::shared_ptr<tx> t2 = std::make_shared<tx>(*t);
+        t2->seq = claim_seq(t2->id);
         // printf("prevouts ");
         // convert the inputs
         for (outpoint& o : t2->vin) {

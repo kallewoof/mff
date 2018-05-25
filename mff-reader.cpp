@@ -68,7 +68,7 @@ int main(int argc, char* const* argv) {
     for (size_t i = 1; i < ca.l.size(); ++i) {
         txids.insert(tracked{uint256S(ca.l[i]), depth});
     }
-    mff::mff_rseq reader(infile);
+    mff::mff_rseq<0> reader(infile);
     reader.read_entry();
     printf("%s: ---log starts---\n", time_string(reader.last_time).c_str());
     uint64_t entries = 0;
@@ -129,6 +129,8 @@ int main(int argc, char* const* argv) {
                     break;
                 } else if (reader.last_cmd == mff::TX_CONF) {
                     printf(" (%s in #%u)", txid_str(txid).c_str(), reader.active_chain.height);
+                } else if (reader.last_cmd == mff::TX_IN) {
+                    printf(" (%s)", txid_str(reader.last_recorded_tx->id).c_str());
                 }
                 fputc('\n', stdout);
             }
