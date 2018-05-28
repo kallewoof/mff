@@ -12,6 +12,8 @@
 // #define l(args...) if (active_chain.height == 521703) { printf(args); }
 // #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
+uint64_t skipped_recs = 0;
+
 namespace mff {
 
 rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
@@ -34,7 +36,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 // bool showinfo = true;
 #define mplinfo_(args...) //if (showinfo) { printf(args); }
-#define mplinfo(args...) //if (showinfo) { printf("[MPL::info] " args); }
+#define mplinfo(args...)  //if (showinfo) { printf("[MPL::info] " args); }
 #define mplwarn(args...) printf("[MPL::warn] " args)
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
 
@@ -137,6 +139,9 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
             mplinfo("unconfirming block #%u\n", active_chain.height);
             undo_block_at_height(active_chain.height);
         }
+    }
+    if (active_chain.chain.size() != 0 && b->height != active_chain.height + 1) {
+        fprintf(stderr, "*** new block height = %u; active chain height = %u; chain top block height = %u!\n", b->height, active_chain.height, active_chain.chain.back()->height);
     }
     assert(active_chain.chain.size() == 0 || b->height == active_chain.height + 1);
     active_chain.height = b->height;
@@ -242,6 +247,7 @@ entry* mff_rseq<I>::read_entry() {
     } catch (std::ios_base::failure& f) {
         return nullptr;
     }
+    // try {
     last_entry.cmd = last_cmd = cmd = (CMD)(u8 & 0x1f); // 0b0001 1111
     last_entry.known = known = (u8 >> 6) & 1;
     timerel = (u8 >> 7) & 1;
@@ -421,6 +427,9 @@ entry* mff_rseq<I>::read_entry() {
     read_time(last_time);
     last_entry.time = last_time;
     // showinfo = false;
+    // } catch (std::ios_base::failure& f) {
+    //     return nullptr;
+    // }
     return &last_entry;
 }
 
@@ -431,7 +440,39 @@ seq_t mff_rseq<I>::claim_seq(const uint256& txid) {
 }
 
 template<int I>
+bool mff_rseq<I>::test_entry(entry* e) {
+    switch (e->cmd) {
+        case CMD::TIME_SET:
+            return false;
+        case CMD::TX_REC:
+            if (seqs.count(e->tx->id)) {
+                skipped_recs++;
+                // we know about it, the other guy didn't, so we ignore
+                if (txs[seqs[e->tx->id]]->location != tx::location_in_mempool) {
+                    printf("warning: ignoring TX_REC for %s but its location is not in the mempool! (location = %d)\n", e->tx->id.ToString().c_str(), txs[seqs[e->tx->id]]->location);
+                }
+                return false;
+            }
+            break;
+        case CMD::TX_IN:
+            assert(seqs.count(e->tx->id));
+            if (txs[seqs[e->tx->id]]->location == tx::location_in_mempool) {
+                // we already consider it to be in the mempool
+                skipped_recs++;
+                return false;
+            }
+            break;
+        default:
+            break;
+    }
+    return true;
+}
+
+template<int I>
 void mff_rseq<I>::write_entry(entry* e) {
+    if (!test_entry(e)) {
+        return;
+    }
     uint8_t u8;
     CMD cmd = e->cmd;
     bool known, timerel;
@@ -616,6 +657,7 @@ template uint256 mff_rseq<0>::get_replacement_txid() const;
 template uint256 mff_rseq<0>::get_invalidated_txid() const;
 template seq_t mff_rseq<0>::seq_read();
 template void mff_rseq<0>::seq_write(seq_t seq);
+template bool mff_rseq<0>::test_entry(entry* e);
 
 template void mff_rseq<1>::apply_block(std::shared_ptr<block> b);
 template void mff_rseq<1>::undo_block_at_height(uint32_t height);
@@ -629,5 +671,6 @@ template uint256 mff_rseq<1>::get_replacement_txid() const;
 template uint256 mff_rseq<1>::get_invalidated_txid() const;
 template seq_t mff_rseq<1>::seq_read();
 template void mff_rseq<1>::seq_write(seq_t seq);
+template bool mff_rseq<1>::test_entry(entry* e);
 
 } // namespace mff

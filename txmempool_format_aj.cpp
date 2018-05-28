@@ -21,7 +21,6 @@
 
 namespace mff {
 
-aj_container* g_aj_ctr = nullptr;
 std::string aj_rpc_call = "";
 
 template<typename T>
@@ -111,8 +110,6 @@ inline FILE* setup_file(const char* path, bool readonly) {
 }
 
 mff_aj::mff_aj(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
-    assert(g_aj_ctr == nullptr);
-    g_aj_ctr = this;
     nextseq = 1;
     last_seq = 0;
     lastflush = GetTime();
@@ -124,7 +121,6 @@ mff_aj::mff_aj(const std::string path, bool readonly) : in_fp(setup_file(path.le
 }
 
 mff_aj::~mff_aj() {
-    g_aj_ctr = nullptr;
 }
 
 void mff_aj::apply_block(std::shared_ptr<block> b) {
@@ -227,7 +223,7 @@ uint256 mff_aj::get_invalidated_txid() const {
 
 /////// RPC
 
-inline FILE* rpc_fetch(const char* cmd, const char* dst) {
+inline FILE* rpc_fetch(const char* cmd, const char* dst, bool abort_on_failure = false) {
     if (aj_rpc_call == "") {
         assert(!"no RPC call available");
     }
@@ -235,6 +231,11 @@ inline FILE* rpc_fetch(const char* cmd, const char* dst) {
     FILE* fp = fopen(dst, "r");
     if (!fp) {
         fprintf(stderr, "RPC call failed: %s\n", cmd);
+        if (!abort_on_failure) {
+            fprintf(stderr, "waiting 5 seconds and trying again\n");
+            sleep(5);
+            return rpc_fetch(cmd, dst, true);
+        }
         assert(0);
     }
     return fp;
@@ -300,7 +301,7 @@ void mff_aj::rpc_get_block(const uint256& blockhex, tiny::block& b, uint32_t& he
 }
 
 void mff_aj::rpc_get_tx(const uint256& txhex, tiny::tx& tx, size_t retries) {
-    // printf("get tx %s\n", txhex.ToString().c_str());
+    printf("get tx %s\n", txhex.ToString().c_str());
     std::string dstfinal = "txdata/" + txhex.ToString() + ".mfft";
     FILE* fp = fopen(dstfinal.c_str(), "rb");
     if (!fp) {
@@ -422,15 +423,21 @@ void mff_aj::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny
     // last_entry.invalid_txhex = 
 }
 
+bool debug_deps = false;
+#define DEBUG_DEPS(args...) if (debug_deps) printf(args)
+
 void mff_aj::check_deps(tiny::tx* cause, const uint256& txid, const uint32_t* index_or_all) {
     if (seqs.count(txid)) {
         seq_t seq = seqs[txid];
+        DEBUG_DEPS("- %llu deps\n", seq);
         if (deps.count(seq)) {
             // potential double spend or RBF
             for (const auto& other : deps[seq]) {
+                DEBUG_DEPS("--- %s with %llu inputs\n", other->id.ToString().c_str(), other->inputs);
                 for (uint64_t j = 0; j < other->inputs; ++j) {
                     const auto& prevout2 = other->vin[j];
                     const uint256& prevout2hash = prevout2.is_known() ? txs[prevout2.get_seq()]->id : prevout2.get_txid();
+                    DEBUG_DEPS("--- comparing %s with %s && (!%d || %llu == %u)\n", prevout2hash.ToString().c_str(), txid.ToString().c_str(), !!index_or_all, prevout2.n, index_or_all ? *index_or_all : 0);
                     if (prevout2hash == txid && (!index_or_all || prevout2.n == *index_or_all)) {
                         // double spent or RBF bumped; we are going with
                         // double spent for now
@@ -450,8 +457,14 @@ void mff_aj::check_deps(tiny::tx* cause, const uint256& txid, const uint32_t* in
 }
 
 void mff_aj::check_deps(tiny::tx& newcomer) {
+    debug_deps = false;
+    if (newcomer.hash == uint256S("535a1b4a6eb47a5d22e19c439415bba6b9ae8f200c4806d30886a7d9649ffca2") || newcomer.hash == uint256S("964797a5f19debe525759e126a40baec325d4f17bf3422d580d1b978d25aa096")) {
+        debug_deps = true;
+    }
+    DEBUG_DEPS("check_deps(%s) w/ %zu inputs\n", newcomer.hash.ToString().c_str(), newcomer.vin.size());
     for (uint64_t i = 0; i < newcomer.vin.size(); ++i) {
         const auto& prevout = newcomer.vin[i].prevout;
+        DEBUG_DEPS("- #%llu %s:%u (%s)\n", i, prevout.hash.ToString().c_str(), prevout.n, seqs.count(prevout.hash) ? "known" : "unknown");
         check_deps(&newcomer, prevout.hash, &prevout.n);
         // add dependency if known
         if (seqs.count(prevout.hash)) {
@@ -487,6 +500,8 @@ std::shared_ptr<tx> mff_aj::register_tx(tiny::tx& tt) {
         }
         assert(in_amount >= sum_out);
         t->fee = in_amount - sum_out; // rpc_get_tx_input_amount(tt) - sum_out;
+        // tiny::tx tx2;
+        // rpc_get_tx(tt.hash, tx2);
     }
     t->inputs = tt.vin.size();
     t->state.resize(t->inputs);
@@ -670,9 +685,9 @@ entry* mff_aj::read_entry() {
         // so we loop back and fetch the next entry
         uint256 old = hashtx;
         hashtx = uint256S(buffer);
-        if (read_hashtx) {
-            fprintf(stderr, "\nwarning: read_hashtx is true @ hashtx (%s -> %s)\n", old.ToString().c_str(), hashtx.ToString().c_str());
-        }
+        // if (read_hashtx) {
+        //     fprintf(stderr, "\nwarning: read_hashtx is true @ hashtx (%s -> %s)\n", old.ToString().c_str(), hashtx.ToString().c_str());
+        // }
         read_hashtx = true;
         // fprintf(known_tx_list, "%s (hash only)\n", hashtx.ToString().c_str());
         // fflush(known_tx_list);
@@ -686,18 +701,18 @@ entry* mff_aj::read_entry() {
     }
 
     if (!strcmp(action, "rawtx")) {
-        if (!read_hashtx) {
-            fprintf(stderr, "\nwarning: read_hashtx is false @ rawtx\n");
-        }
+        // if (!read_hashtx) {
+        //     fprintf(stderr, "\nwarning: read_hashtx is false @ rawtx\n");
+        // }
         read_hashtx = false;
         tiny::tx tx;
         deserialize_hex_string(buffer, tx);
         // fprintf(known_tx_list, "%s (full)\n", tx.hash.ToString().c_str());
         // fflush(known_tx_list);
-        if (tx.hash != hashtx) {
-            fprintf(stderr, "\nwarning: tx.hash != hashtx:\n\t%s\n!=\t%s\n", tx.hash.ToString().c_str(), hashtx.ToString().c_str());
-            // assert(0);
-        }
+        // if (tx.hash != hashtx) {
+        //     fprintf(stderr, "\nwarning: tx.hash != hashtx:\n\t%s\n!=\t%s\n", tx.hash.ToString().c_str(), hashtx.ToString().c_str());
+        //     // assert(0);
+        // }
         insert(tx);
         // DEBLOG("deserialized tx %s with seq=%llu\n", tx.hash.ToString().c_str(), seqs[tx.hash]);
         // if (debugging && tx.hash == debug_txid) debug_seq = seqs[tx.hash];
@@ -710,9 +725,9 @@ entry* mff_aj::read_entry() {
         return read_entry();
     }
 
-    if (read_hashtx) {
-        fprintf(stderr, "\nwarning: read_hashtx is true @ %s\n", action);
-    }
+    // if (read_hashtx) {
+    //     fprintf(stderr, "\nwarning: read_hashtx is true @ %s\n", action);
+    // }
 
     if (!strcmp(action, "hashblock")) {
         uint256 blockhash = uint256S(buffer);
@@ -880,19 +895,6 @@ entry* mff_aj::read_entry() {
 //     }
 //     write_set_time(u8, e->time);
 // }
-
-inline seq_t mff_aj::seq_read() {
-    int64_t aj;
-    in >> CVarInt<VarIntMode::SIGNED, int64_t>{aj};
-    last_seq += aj;
-    return last_seq;
-}
-
-inline void mff_aj::seq_write(seq_t seq) {
-    int64_t aj = (seq > last_seq ? seq - last_seq : -int64_t(last_seq - seq));
-    in << CVarInt<VarIntMode::SIGNED, int64_t>(aj);
-    last_seq = seq;
-}
 
 inline void mff_aj::sync() {
     int64_t now = GetTime();

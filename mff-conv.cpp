@@ -129,4 +129,6 @@ int main(int argc, char* const* argv) {
         }
     }
     out->flush();
+    printf("\n");
+    printf("skipped recs = %llu\n", skipped_recs);
 }
