@@ -135,12 +135,17 @@ private:
     FILE* in_fp;
     CAutoFile in;
     rseq_adapter<CAutoFile, I> serializer;
+    std::vector<uint256> pending_conf_unknown;
+    std::vector<seq_t> pending_conf_known;
 
     void apply_block(std::shared_ptr<block> b);
     void undo_block_at_height(uint32_t height);
     entry last_entry;
     inline void sync();
     bool test_entry(entry* e);
+
+    inline void tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t reason);
+    inline void tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause);
 public:
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
@@ -164,7 +169,7 @@ public:
     mff_rseq(const std::string path = "", bool readonly = true);
     ~mff_rseq();
     entry* read_entry() override;
-    void write_entry(entry* e) override;
+    // void write_entry(entry* e) override;
     seq_t claim_seq(const uint256& txid) override;
     long tell() override { return ftell(in_fp); }
     uint256 get_replacement_txid() const;
@@ -174,6 +179,13 @@ public:
     void seq_write(seq_t seq) override;
 
     void flush() override { fflush(in_fp); }
+
+    const std::shared_ptr<tx> register_entry(const tiny::mempool_entry& entry);
+
+    void add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) override;
+    void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) override;
+    void push_block(int height, uint256 hash) override;
+    void pop_block(int height) override;
 };
 
 } // namespace mff

@@ -34,6 +34,9 @@ struct outpoint {
 
     bool IsNull() const { return (hash.IsNull() && n == (uint32_t) -1); }
 
+    bool operator==(const outpoint& other) const { return hash == other.hash && n == other.n; }
+    bool operator<(const outpoint& other) const { return hash < other.hash || (hash == other.hash && n < other.n); }
+
     std::string ToString() const { return strprintf("outpoint(%s, %u)", hash.ToString().substr(0,10), n); }
 };
 

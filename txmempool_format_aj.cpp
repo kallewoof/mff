@@ -427,51 +427,51 @@ bool debug_deps = false;
 #define DEBUG_DEPS(args...) if (debug_deps) printf(args)
 
 void mff_aj::check_deps(tiny::tx* cause, const uint256& txid, const uint32_t* index_or_all) {
-    if (seqs.count(txid)) {
-        seq_t seq = seqs[txid];
-        DEBUG_DEPS("- %llu deps\n", seq);
-        if (deps.count(seq)) {
-            // potential double spend or RBF
-            for (const auto& other : deps[seq]) {
-                DEBUG_DEPS("--- %s with %llu inputs\n", other->id.ToString().c_str(), other->inputs);
-                for (uint64_t j = 0; j < other->inputs; ++j) {
-                    const auto& prevout2 = other->vin[j];
-                    const uint256& prevout2hash = prevout2.is_known() ? txs[prevout2.get_seq()]->id : prevout2.get_txid();
-                    DEBUG_DEPS("--- comparing %s with %s && (!%d || %llu == %u)\n", prevout2hash.ToString().c_str(), txid.ToString().c_str(), !!index_or_all, prevout2.n, index_or_all ? *index_or_all : 0);
-                    if (prevout2hash == txid && (!index_or_all || prevout2.n == *index_or_all)) {
-                        // double spent or RBF bumped; we are going with
-                        // double spent for now
-                        // TODO: detect RBF
-                        auto otx = std::make_shared<tiny::tx>();
-                        rpc_get_tx(other->id, *otx);
-                        backlog_ttxs.push_back(otx);
-                        tx_invalid(true /* ? */, seq, other, *otx, tx::invalid_doublespent, cause ? &cause->hash : nullptr);
-                        // recursively invalidate txs dependent on other (no matter the index)
-                        check_deps(cause, other->id);
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    // if (seqs.count(txid)) {
+    //     seq_t seq = seqs[txid];
+    //     DEBUG_DEPS("- %llu deps\n", seq);
+    //     if (deps.count(seq)) {
+    //         // potential double spend or RBF
+    //         for (const auto& other : deps[seq]) {
+    //             DEBUG_DEPS("--- %s with %llu inputs\n", other->id.ToString().c_str(), other->inputs);
+    //             for (uint64_t j = 0; j < other->inputs; ++j) {
+    //                 const auto& prevout2 = other->vin[j];
+    //                 const uint256& prevout2hash = prevout2.is_known() ? txs[prevout2.get_seq()]->id : prevout2.get_txid();
+    //                 DEBUG_DEPS("--- comparing %s with %s && (!%d || %llu == %u)\n", prevout2hash.ToString().c_str(), txid.ToString().c_str(), !!index_or_all, prevout2.n, index_or_all ? *index_or_all : 0);
+    //                 if (prevout2hash == txid && (!index_or_all || prevout2.n == *index_or_all)) {
+    //                     // double spent or RBF bumped; we are going with
+    //                     // double spent for now
+    //                     // TODO: detect RBF
+    //                     auto otx = std::make_shared<tiny::tx>();
+    //                     rpc_get_tx(other->id, *otx);
+    //                     backlog_ttxs.push_back(otx);
+    //                     tx_invalid(true /* ? */, seq, other, *otx, tx::invalid_doublespent, cause ? &cause->hash : nullptr);
+    //                     // recursively invalidate txs dependent on other (no matter the index)
+    //                     check_deps(cause, other->id);
+    //                     break;
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 void mff_aj::check_deps(tiny::tx& newcomer) {
-    debug_deps = false;
-    if (newcomer.hash == uint256S("535a1b4a6eb47a5d22e19c439415bba6b9ae8f200c4806d30886a7d9649ffca2") || newcomer.hash == uint256S("964797a5f19debe525759e126a40baec325d4f17bf3422d580d1b978d25aa096")) {
-        debug_deps = true;
-    }
-    DEBUG_DEPS("check_deps(%s) w/ %zu inputs\n", newcomer.hash.ToString().c_str(), newcomer.vin.size());
-    for (uint64_t i = 0; i < newcomer.vin.size(); ++i) {
-        const auto& prevout = newcomer.vin[i].prevout;
-        DEBUG_DEPS("- #%llu %s:%u (%s)\n", i, prevout.hash.ToString().c_str(), prevout.n, seqs.count(prevout.hash) ? "known" : "unknown");
-        check_deps(&newcomer, prevout.hash, &prevout.n);
-        // add dependency if known
-        if (seqs.count(prevout.hash)) {
-            seq_t seq = seqs[prevout.hash];
-            deps[seq].push_back(txs[seq]);
-        }
-    }
+    // debug_deps = false;
+    // if (newcomer.hash == uint256S("535a1b4a6eb47a5d22e19c439415bba6b9ae8f200c4806d30886a7d9649ffca2") || newcomer.hash == uint256S("964797a5f19debe525759e126a40baec325d4f17bf3422d580d1b978d25aa096")) {
+    //     debug_deps = true;
+    // }
+    // DEBUG_DEPS("check_deps(%s) w/ %zu inputs\n", newcomer.hash.ToString().c_str(), newcomer.vin.size());
+    // for (uint64_t i = 0; i < newcomer.vin.size(); ++i) {
+    //     const auto& prevout = newcomer.vin[i].prevout;
+    //     DEBUG_DEPS("- #%llu %s:%u (%s)\n", i, prevout.hash.ToString().c_str(), prevout.n, seqs.count(prevout.hash) ? "known" : "unknown");
+    //     check_deps(&newcomer, prevout.hash, &prevout.n);
+    //     // add dependency if known
+    //     if (seqs.count(prevout.hash)) {
+    //         seq_t seq = seqs[prevout.hash];
+    //         deps[seq].push_back(txs[seq]);
+    //     }
+    // }
 }
 
 void mff_aj::push_entry(std::shared_ptr<entry> e) {
@@ -530,23 +530,24 @@ std::shared_ptr<tx> mff_aj::register_tx(tiny::tx& tt) {
 }
 
 void mff_aj::insert(tiny::tx& tt) {
-    // mplinfo("insert %s %s\n", seqs.count(tref.GetHash()) ? "known" : "new", tref.GetHash().ToString().c_str());
-    auto e = std::make_shared<entry>(this);
-    if (seqs.count(tt.hash)) {
-        // we do: TX_IN
-        DSL(seqs[tt.hash], "insert() TX_IN\n");
-        e->cmd = CMD::TX_IN;
-        e->known = true;
-        e->tx = txs[seqs[tt.hash]];
-    } else {
-        // we don't: TX_REC
-        auto t = register_tx(tt);
-        e->cmd = CMD::TX_REC;
-        e->known = false;
-        e->tx = t;
-    }
-    push_entry(e);
-    check_deps(tt);
+    mempool.insert_tx(std::make_shared<tiny::tx>(tt));
+    // // mplinfo("insert %s %s\n", seqs.count(tref.GetHash()) ? "known" : "new", tref.GetHash().ToString().c_str());
+    // auto e = std::make_shared<entry>(this);
+    // if (seqs.count(tt.hash)) {
+    //     // we do: TX_IN
+    //     DSL(seqs[tt.hash], "insert() TX_IN\n");
+    //     e->cmd = CMD::TX_IN;
+    //     e->known = true;
+    //     e->tx = txs[seqs[tt.hash]];
+    // } else {
+    //     // we don't: TX_REC
+    //     auto t = register_tx(tt);
+    //     e->cmd = CMD::TX_REC;
+    //     e->known = false;
+    //     e->tx = t;
+    // }
+    // push_entry(e);
+    // check_deps(tt);
 }
 
 void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
@@ -554,14 +555,16 @@ void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
     blk->height = height;
     while (active_chain.chain.size() > 0 && height < active_chain.height + 1) {
         mplinfo("unconfirming block #%u\n", active_chain.height);
-        auto e = std::make_shared<entry>(this);
-        e->cmd = CMD::TX_UNCONF;
-        e->known = true;
-        e->unconf_height = active_chain.height;
-        push_entry(e);
+        mempool.reorg_block(active_chain.height);
+        // auto e = std::make_shared<entry>(this);
+        // e->cmd = CMD::TX_UNCONF;
+        // e->known = true;
+        // e->unconf_height = active_chain.height;
+        // push_entry(e);
         undo_block_at_height(active_chain.height);
     }
     assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
+    mempool.process_block(height, hash, b.vtx);
     std::vector<uint256>& pending_conf_unknown = blk->unknown;
     std::vector<seq_t>& pending_conf_known = blk->known;
     for (auto& t : b.vtx) {
@@ -569,25 +572,30 @@ void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
         if (known) {
             seq_t seq = seqs[t.hash];
             auto& rt = txs[seq];
-            if (rt->location == tx::location_discarded || rt->location == tx::location_invalid) {
-                // re-check dependencies, as this was actually thrown out
-                check_deps(t);
-            }
+            // if (rt->location == tx::location_discarded || rt->location == tx::location_invalid) {
+            //     // re-check dependencies, as this was actually thrown out
+            //     check_deps(t);
+            // }
             pending_conf_known.push_back(seq);
             rt->location = tx::location_confirmed;
             // tx_freeze(seq);
         } else {
             // check deps
-            check_deps(t);
+            // check_deps(t);
             pending_conf_unknown.push_back(t.hash);
         }
     }
-    auto e = std::make_shared<entry>(this);
-    e->cmd = CMD::TX_CONF;
-    blk->is_known = e->known = blocks.count(hash);
+    // auto e = std::make_shared<entry>(this);
+    // e->cmd = CMD::TX_CONF;
+    blk->is_known = 
+    //e->known =
+    blocks.count(hash);
     blk->count_known = pending_conf_known.size();
-    e->block_in = blocks[hash] = blk;
-    push_entry(e);
+    //e->block_in = 
+    blocks[hash] = blk;
+    // push_entry(e);
+    active_chain.height = height;
+    active_chain.chain.push_back(blk);
 }
 
 entry* mff_aj::read_entry() {
@@ -600,22 +608,23 @@ entry* mff_aj::read_entry() {
     // if (known_tx_list == nullptr) {
     //     known_tx_list = fopen("known_tx_list.txt", "w");
     // }
-    if (backlog.size()) {
-        entry_counter++;
-        previous_entry = backlog[0];
-        backlog.erase(backlog.begin());
-        last_time = previous_entry->time;
-        // if (debug_seq) {
-        //     if (seqs.count(debug_txid) == 0 || seqs[debug_txid] != debug_seq) {
-        //         fprintf(stderr, "*** lost connection to %s (seqs[id] -> %llu)\n", debug_txid.ToString().c_str(), seqs.count(debug_txid) ? seqs[debug_txid] : 0);
-        //         assert(0);
-        //     }
-        // }
-        return previous_entry.get();
-    } else {
-        // clean up backlog stuffs
-        // TODO: ^^^
-    }
+    // if (backlog.size()) {
+    //     entry_counter++;
+    //     previous_entry = backlog[0];
+    //     backlog.erase(backlog.begin());
+    //     last_time = previous_entry->time;
+    //     // if (debug_seq) {
+    //     //     if (seqs.count(debug_txid) == 0 || seqs[debug_txid] != debug_seq) {
+    //     //         fprintf(stderr, "*** lost connection to %s (seqs[id] -> %llu)\n", debug_txid.ToString().c_str(), seqs.count(debug_txid) ? seqs[debug_txid] : 0);
+    //     //         assert(0);
+    //     //     }
+    //     // }
+    //     return previous_entry.get();
+    // } else {
+    //     // clean up backlog stuffs
+    //     // TODO: ^^^
+    // }
+    entry* e = (entry*)1;
 
     // <timestamp> <action> <data...>
     int64_t timestamp;
@@ -631,6 +640,7 @@ entry* mff_aj::read_entry() {
     // }
     // DEBLOG("%lld.%u %s ", timestamp, fraction, action);
 
+    if (shared_time) *shared_time = timestamp;
     read_time = timestamp;
 
     char* bptr = buffer;
@@ -697,7 +707,7 @@ entry* mff_aj::read_entry() {
         //         assert(0);
         //     }
         // }
-        return read_entry();
+        return e;// read_entry();
     }
 
     if (!strcmp(action, "rawtx")) {
@@ -722,7 +732,7 @@ entry* mff_aj::read_entry() {
         //         assert(0);
         //     }
         // }
-        return read_entry();
+        return e;// read_entry();
     }
 
     // if (read_hashtx) {
@@ -741,7 +751,7 @@ entry* mff_aj::read_entry() {
         //         assert(0);
         //     }
         // }
-        return read_entry();
+        return e;//read_entry();
     }
 
     fprintf(stderr, "\nunknown command %s\n", action);

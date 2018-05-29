@@ -34,9 +34,9 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
     return true;
 }
 
-// bool showinfo = true;
-#define mplinfo_(args...) //if (showinfo) { printf(args); }
-#define mplinfo(args...)  //if (showinfo) { printf("[MPL::info] " args); }
+bool showinfo = true;
+#define mplinfo_(args...) if (showinfo) { printf(args); }
+#define mplinfo(args...)  if (showinfo) { printf("[MPL::info] " args); }
 #define mplwarn(args...) printf("[MPL::warn] " args)
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
 
@@ -51,13 +51,14 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
     }
 
 #define write_time(rel) do {\
+        int64_t time = shared_time ? *shared_time : GetTime(); \
         if (rel & CMD::TIME_REL_BIT) {\
-            int64_t tfull = GetTime() - last_time;\
+            int64_t tfull = time - last_time;\
             uint8_t t = tfull <= 255 ? tfull : 255;\
             in << t;\
             last_time += t;\
         } else {\
-            last_time = GetTime();\
+            last_time = time;\
             in << last_time;\
         }\
         sync();\
@@ -259,12 +260,12 @@ entry* mff_rseq<I>::read_entry() {
             break;
 
         case TX_REC: {
-            mplinfo("TX_REC(): "); fflush(stdout);
+            // mplinfo("TX_REC(): "); fflush(stdout);
             auto t = std::make_shared<tx>();
             serializer.deserialize_tx(in, *t);
             // in >> tser;
             last_entry.tx = last_recorded_tx = t;
-            DSL(t->seq, "TX_REC\n");
+            // DSL(t->seq, "TX_REC\n");
             if (txs.count(t->seq)) {
                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
             }
@@ -277,7 +278,7 @@ entry* mff_rseq<I>::read_entry() {
                     last_seqs.push_back(prevout.get_seq());
                 }
             }
-            mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
+            // mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
             t->location = tx::location_in_mempool;
             break;
         }
@@ -468,157 +469,157 @@ bool mff_rseq<I>::test_entry(entry* e) {
     return true;
 }
 
-template<int I>
-void mff_rseq<I>::write_entry(entry* e) {
-    if (!test_entry(e)) {
-        return;
-    }
-    uint8_t u8;
-    CMD cmd = e->cmd;
-    bool known, timerel;
-    known = e->known;
-    u8 = prot(cmd, known);
-    in << u8;
-
-    switch (cmd) {
-        case CMD::TIME_SET:
-            // time updated after switch()
-            mplinfo("TIME_SET()\n");
-            break;
-    
-        case TX_REC: {
-            mplinfo("TX_REC(): "); fflush(stdout);
-            auto t = import_tx(e->sds, e->tx);
-            DSL(t->seq, "TX_REC\n");
-            if (txs.count(t->seq)) {
-                seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
-            }
-            txs[t->seq] = t;
-            seqs[t->id] = t->seq;
-            mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
-            t->location = tx::location_in_mempool;
-            serializer.serialize_tx(in, *t);
-            break;
-        }
-    
-        case TX_IN: {
-            mplinfo("TX_IN(): "); fflush(stdout);
-            auto t = import_tx(e->sds, e->tx);
-            uint64_t seq = seqs[t->id];
-            assert(seq && txs.count(seq));
-            DSL(seq, "TX_IN\n");
-            if (txs.count(seq)) {
-                txs[seq]->location = tx::location_in_mempool;
-            }
-            seq_write(seq);
-            mplinfo_("seq=%llu\n", seq);
-            break;
-        }
-    
-        case TX_CONF: {
-            // l1("TX_CONF(%s): ", known ? "known" : "unknown");
-            auto b = e->block_in;
-            if (known) {
-                // we know the block; just get the header info and find it, then apply
-                b->is_known = true;
-                // conversion not needed
-                serializer.serialize_block(in, *b);
-                assert(blocks.count(b->hash));
-                // l1("block %u=%s\n", b.height, b.hash.ToString().c_str());
-                apply_block(blocks[b->hash]);
-            } else {
-                b->is_known = false;
-                b = import_block(e->sds, b);
-                serializer.serialize_block(in, *b);
-                blocks[b->hash] = b;
-                // l1("block %u=%s\n", b->height, b->hash.ToString().c_str());
-                apply_block(b);
-            }
-            break;
-        }
-    
-        case TX_OUT: {
-            assert(known);
-            mplinfo("TX_OUT(): "); fflush(stdout);
-            seq_t seq = seqs[e->tx->id];
-            uint8_t reason = e->out_reason;
-            DSL(seq, "TX_OUT\n");
-            assert(txs.count(seq));
-            auto t = txs[seq];
-            t->location = tx::location_discarded;
-            t->out_reason = (tx::out_reason_enum)reason;
-            seq_write(seq);
-            in << reason;
-            mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
-            break;
-        }
-    
-        case TX_INVALID: {
-            mplinfo("TX_INVALID(): "); fflush(stdout);
-            // out.debugme(true);
-            replacement_seq = 0;
-            replacement_txid.SetNull();
-
-            auto t_invalid = import_tx(e->sds, e->tx);
-            // printf("t_invalid = %s\n", t_invalid->id.ToString().c_str());
-            seq_t tx_invalid = seqs[t_invalid->id];
-            assert(!tx_invalid || txs[seqs[t_invalid->id]]->id == t_invalid->id);
-            uint8_t state = e->invalid_reason;
-            bool cause_known = e->invalid_cause_known;
-            seq_t tx_cause(0);
-            const uint256& invalid_replacement = e->invalid_replacement;
-            const tiny::tx* invalid_tinytx = e->invalid_tinytx;
-
-            write_txref(tx_invalid, t_invalid->id);
-
-            uint8_t v = state | (cause_known ? CMD::TX_KNOWN_BIT : 0);
-            in << v;
-            if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
-                assert(!invalid_replacement.IsNull());
-                seq_t causeseq = seqs.count(invalid_replacement) ? seqs[invalid_replacement] : 0;
-                write_txref(causeseq, invalid_replacement);
-            }
-
-            in << *invalid_tinytx;
-            // printf("invalid tinytx = %s\n", invalid_tinytx->hash.ToString().c_str());
-
-            if (tx_invalid) {
-                auto t = txs[tx_invalid];
-                t->location = tx::location_invalid;
-                t->invalid_reason = (tx::invalid_reason_enum)state;
-                if (txs.count(tx_invalid)) {
-                    if (invalid_tinytx->hash != txs[tx_invalid]->id) {
-                        printf("tx hash failure:\n\t%s\nvs\t%s\n", invalid_tinytx->hash.ToString().c_str(), txs[tx_invalid]->id.ToString().c_str());
-                        printf("tx hex = %s\n", HexStr(*e->invalid_txhex).c_str());
-                    }
-                    assert(invalid_tinytx->hash == txs[tx_invalid]->id);
-                }
-            }
-            mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
-            mplinfo_("----- tx invalid deserialization ends -----\n");
-            // out.debugme(false);
-            break;
-        }
-    
-        case TX_UNCONF: {
-            mplinfo("TX_UNCONF(): "); fflush(stdout);
-            uint32_t height = e->unconf_height;
-            in << height;
-            if (known) {
-                mplinfo_("known, height=%u\n", height);
-                undo_block_at_height(height);
-            } else {
-                assert(!"not implemented");
-            }
-            break;
-        }
-    
-        default:
-            mplerr("u8 = %u, cmd = %u\n", u8, cmd);
-            assert(!"unknown command"); // todo: exceptionize
-    }
-    write_set_time(u8, e->time);
-}
+// template<int I>
+// void mff_rseq<I>::write_entry(entry* e) {
+//     if (!test_entry(e)) {
+//         return;
+//     }
+//     uint8_t u8;
+//     CMD cmd = e->cmd;
+//     bool known, timerel;
+//     known = e->known;
+//     u8 = prot(cmd, known);
+//     in << u8;
+// 
+//     switch (cmd) {
+//         case CMD::TIME_SET:
+//             // time updated after switch()
+//             mplinfo("TIME_SET()\n");
+//             break;
+// 
+//         case TX_REC: {
+//             mplinfo("TX_REC(): "); fflush(stdout);
+//             auto t = import_tx(e->sds, e->tx);
+//             DSL(t->seq, "TX_REC\n");
+//             if (txs.count(t->seq)) {
+//                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
+//             }
+//             txs[t->seq] = t;
+//             seqs[t->id] = t->seq;
+//             mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
+//             t->location = tx::location_in_mempool;
+//             serializer.serialize_tx(in, *t);
+//             break;
+//         }
+// 
+//         case TX_IN: {
+//             mplinfo("TX_IN(): "); fflush(stdout);
+//             auto t = import_tx(e->sds, e->tx);
+//             uint64_t seq = seqs[t->id];
+//             assert(seq && txs.count(seq));
+//             DSL(seq, "TX_IN\n");
+//             if (txs.count(seq)) {
+//                 txs[seq]->location = tx::location_in_mempool;
+//             }
+//             seq_write(seq);
+//             mplinfo_("seq=%llu\n", seq);
+//             break;
+//         }
+// 
+//         case TX_CONF: {
+//             // l1("TX_CONF(%s): ", known ? "known" : "unknown");
+//             auto b = e->block_in;
+//             if (known) {
+//                 // we know the block; just get the header info and find it, then apply
+//                 b->is_known = true;
+//                 // conversion not needed
+//                 serializer.serialize_block(in, *b);
+//                 assert(blocks.count(b->hash));
+//                 // l1("block %u=%s\n", b.height, b.hash.ToString().c_str());
+//                 apply_block(blocks[b->hash]);
+//             } else {
+//                 b->is_known = false;
+//                 b = import_block(e->sds, b);
+//                 serializer.serialize_block(in, *b);
+//                 blocks[b->hash] = b;
+//                 // l1("block %u=%s\n", b->height, b->hash.ToString().c_str());
+//                 apply_block(b);
+//             }
+//             break;
+//         }
+// 
+//         case TX_OUT: {
+//             assert(known);
+//             mplinfo("TX_OUT(): "); fflush(stdout);
+//             seq_t seq = seqs[e->tx->id];
+//             uint8_t reason = e->out_reason;
+//             DSL(seq, "TX_OUT\n");
+//             assert(txs.count(seq));
+//             auto t = txs[seq];
+//             t->location = tx::location_discarded;
+//             t->out_reason = (tx::out_reason_enum)reason;
+//             seq_write(seq);
+//             in << reason;
+//             mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
+//             break;
+//         }
+// 
+//         case TX_INVALID: {
+//             mplinfo("TX_INVALID(): "); fflush(stdout);
+//             // out.debugme(true);
+//             replacement_seq = 0;
+//             replacement_txid.SetNull();
+// 
+//             auto t_invalid = import_tx(e->sds, e->tx);
+//             // printf("t_invalid = %s\n", t_invalid->id.ToString().c_str());
+//             seq_t tx_invalid = seqs[t_invalid->id];
+//             assert(!tx_invalid || txs[seqs[t_invalid->id]]->id == t_invalid->id);
+//             uint8_t state = e->invalid_reason;
+//             bool cause_known = e->invalid_cause_known;
+//             seq_t tx_cause(0);
+//             const uint256& invalid_replacement = e->invalid_replacement;
+//             const tiny::tx* invalid_tinytx = e->invalid_tinytx;
+// 
+//             write_txref(tx_invalid, t_invalid->id);
+// 
+//             uint8_t v = state | (cause_known ? CMD::TX_KNOWN_BIT : 0);
+//             in << v;
+//             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
+//                 assert(!invalid_replacement.IsNull());
+//                 seq_t causeseq = seqs.count(invalid_replacement) ? seqs[invalid_replacement] : 0;
+//                 write_txref(causeseq, invalid_replacement);
+//             }
+// 
+//             in << *invalid_tinytx;
+//             // printf("invalid tinytx = %s\n", invalid_tinytx->hash.ToString().c_str());
+// 
+//             if (tx_invalid) {
+//                 auto t = txs[tx_invalid];
+//                 t->location = tx::location_invalid;
+//                 t->invalid_reason = (tx::invalid_reason_enum)state;
+//                 if (txs.count(tx_invalid)) {
+//                     if (invalid_tinytx->hash != txs[tx_invalid]->id) {
+//                         printf("tx hash failure:\n\t%s\nvs\t%s\n", invalid_tinytx->hash.ToString().c_str(), txs[tx_invalid]->id.ToString().c_str());
+//                         printf("tx hex = %s\n", HexStr(*e->invalid_txhex).c_str());
+//                     }
+//                     assert(invalid_tinytx->hash == txs[tx_invalid]->id);
+//                 }
+//             }
+//             mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
+//             mplinfo_("----- tx invalid deserialization ends -----\n");
+//             // out.debugme(false);
+//             break;
+//         }
+// 
+//         case TX_UNCONF: {
+//             mplinfo("TX_UNCONF(): "); fflush(stdout);
+//             uint32_t height = e->unconf_height;
+//             in << height;
+//             if (known) {
+//                 mplinfo_("known, height=%u\n", height);
+//                 undo_block_at_height(height);
+//             } else {
+//                 assert(!"not implemented");
+//             }
+//             break;
+//         }
+// 
+//         default:
+//             mplerr("u8 = %u, cmd = %u\n", u8, cmd);
+//             assert(!"unknown command"); // todo: exceptionize
+//     }
+//     write_set_time(u8, e->time);
+// }
 
 template<int I>
 inline seq_t mff_rseq<I>::seq_read() {
@@ -645,19 +646,200 @@ inline void mff_rseq<I>::sync() {
     }
 }
 
+template<int I>
+const std::shared_ptr<tx> mff_rseq<I>::register_entry(const tiny::mempool_entry& entry) {
+    const tiny::tx& tref = *entry.x;
+    auto t = std::make_shared<tx>();
+    t->id = tref.hash;
+    t->seq = nextseq++;
+    t->weight = tref.GetWeight();
+    t->fee = entry.fee();
+    t->inputs = tref.vin.size();
+    t->state.resize(t->inputs);
+    t->vin.resize(t->inputs);
+    for (uint64_t i = 0; i < t->inputs; ++i) {
+        const auto& prevout = tref.vin[i].prevout;
+        bool known = seqs.count(prevout.hash);
+        seq_t seq = known ? seqs[prevout.hash] : 0;
+        assert(!known || seq != 0);
+        bool confirmed = known && txs[seq]->location == tx::location_confirmed;
+        t->state[i] = confirmed ? outpoint::state_confirmed : known ? outpoint::state_known : outpoint::state_unknown;
+        t->vin[i] = known ? outpoint(prevout.n, seq) : outpoint(prevout.n, prevout.hash);
+        // printf("- vin %llu = %s n=%d, seq=%llu, hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
+    }
+
+    txs[t->seq] = t;
+    seqs[t->id] = t->seq;
+    return t;
+}
+
+template<int I>
+void mff_rseq<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
+    uint8_t b;
+    // do we know this transaction?
+    const auto& tref = entry->x;
+    // mplinfo("insert %s %s\n", seqs.count(tref.GetHash()) ? "known" : "new", tref.GetHash().ToString().c_str());
+    if (seqs.count(tref->hash)) {
+        // we do: TX_IN
+        b = prot(CMD::TX_IN, true);
+        in << b;
+        seq_write(seqs[tref->hash]);
+    } else {
+        // we don't: TX_REC
+        auto t = register_entry(*entry);
+        b = prot(CMD::TX_REC, false);
+        in << b;
+        serializer.serialize_tx(in, *t);
+    }
+    write_time(b);
+}
+
+template<int I>
+inline void mff_rseq<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t reason) {
+    mplinfo("TX_OUT %s %llu %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_out_reason_str(reason));
+    uint8_t b = prot(CMD::TX_OUT, known);
+    if (known) {
+        t->location = tx::location_discarded;
+        t->out_reason = (tx::out_reason_enum)reason;
+        // tx_chill(seq);
+    }
+    in << b;
+    write_txref(seq, tref.hash);
+    in << reason;
+    write_time(b);
+}
+
+template<int I>
+inline void mff_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause) {
+    // out.debugme(true);
+    mplinfo("TX_INVALID %s %llu %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_invalid_state_str(state));
+    uint8_t b = prot(CMD::TX_INVALID, known);
+    if (known) {
+        t->location = tx::location_invalid;
+        t->invalid_reason = (tx::invalid_reason_enum)state;
+        // tx_freeze(seq);
+    }
+    in << b;
+    write_txref(seq, tref.hash);
+    uint8_t v = state | (cause && seqs.count(*cause) ? CMD::TX_KNOWN_BIT : 0);
+    in << v;
+    if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
+        assert(cause);
+        seq_t causeseq = seqs.count(*cause) ? seqs[*cause] : 0;
+        write_txref(causeseq, *cause);
+    }
+    in << tref;
+    write_time(b);
+    // out.debugme(false);
+}
+
+template<int I>
+void mff_rseq<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause_tx) {
+    uint256* cause = cause_tx ? &cause_tx->hash : nullptr;
+    // do we know this transaction?
+    const auto& tref = *entry->x;
+    bool known = seqs.count(tref.hash);
+    seq_t seq = known ? seqs[tref.hash] : 0;
+    auto t = known ? txs[seq] : nullptr;
+    switch (reason) {
+    case tiny::MemPoolRemovalReason::EXPIRY:    //! Expired from mempool
+        // TX_OUT(REASON=1)
+        return tx_out(known, seq, t, tref, tx::out_reason_age_expiry);
+    case tiny::MemPoolRemovalReason::SIZELIMIT: //! Removed in size limiting
+        // TX_OUT(REASON=0)
+        return tx_out(known, seq, t, tref, tx::out_reason_low_fee);
+    case tiny::MemPoolRemovalReason::REORG:     //! Removed for reorganization
+        // TX_INVALID(STATE=2)
+        return tx_invalid(known, seq, t, tref, tx::invalid_reorg, cause);
+    case tiny::MemPoolRemovalReason::BLOCK:     //! Removed for block
+        // TX_CONF
+        if (known) {
+            pending_conf_known.push_back(seq);
+            t->location = tx::location_confirmed;
+            // tx_freeze(seq);
+        } else {
+            pending_conf_unknown.push_back(tref.hash);
+        }
+        return;
+    case tiny::MemPoolRemovalReason::CONFLICT:  //! Removed for conflict with in-block transaction
+        // TX_INVALID(STATE=1)
+        return tx_invalid(known, seq, t, tref, tx::invalid_doublespent, cause);
+    case tiny::MemPoolRemovalReason::REPLACED:  //! Removed for replacement
+        // TX_INVALID(STATE=0)
+        return tx_invalid(known, seq, t, tref, tx::invalid_rbf_bumped, cause);
+    case tiny::MemPoolRemovalReason::UNKNOWN:   //! Manually removed or unknown reason
+    default:
+        // TX_OUT(REASON=2) -or- TX_INVALID(REASON=3)
+        // If there is a cause, we use invalid, otherwise out
+        if (cause) {
+            return tx_invalid(known, seq, t, tref, tx::invalid_unknown, cause);
+        }
+        return tx_out(known, seq, t, tref, tx::out_reason_unknown);
+    }
+}
+
+template<int I>
+void mff_rseq<I>::push_block(int height, uint256 hash) {
+    mplinfo("confirm block #%u (%s)\n", height, hash.ToString().c_str());
+    uint8_t b;
+    std::shared_ptr<block> blk;
+    while (active_chain.chain.size() > 0 && height < active_chain.height + 1) {
+        mplinfo("unconfirming block #%u\n", active_chain.height);
+        b = prot(CMD::TX_UNCONF, true);
+        in << b << active_chain.height;
+        write_time(b);
+        undo_block_at_height(active_chain.height);
+    }
+    assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
+    if (blocks.count(hash)) {
+        // known block
+        blk = blocks[hash];
+        blk->is_known = true;
+        b = prot(CMD::TX_CONF, true);
+    } else {
+        // unknown block
+        blk = std::make_shared<block>(height, hash);
+        blk->count_known = pending_conf_known.size();
+        blk->known = pending_conf_known;
+        blk->unknown = pending_conf_unknown;
+        b = prot(CMD::TX_CONF, false);
+        blocks[hash] = blk;
+    }
+    assert(blk->height == height);
+    apply_block(blk);
+    // active_chain.height = height;
+    // active_chain.chain.push_back(blk);
+    in << b;
+    serializer.serialize_block(in, *blk);
+    pending_conf_known.clear();
+    pending_conf_unknown.clear();
+    write_time(b);
+    // update_queues();
+}
+
+template<int I>
+void mff_rseq<I>::pop_block(int height) {
+    undo_block_at_height(height);
+}
+
 template void mff_rseq<0>::apply_block(std::shared_ptr<block> b);
 template void mff_rseq<0>::undo_block_at_height(uint32_t height);
 template seq_t mff_rseq<0>::touched_txid(const uint256& txid, bool count);
 template mff_rseq<0>::mff_rseq(const std::string path, bool readonly);
 template mff_rseq<0>::~mff_rseq();
 template entry* mff_rseq<0>::read_entry();
-template void mff_rseq<0>::write_entry(entry* e);
+// template void mff_rseq<0>::write_entry(entry* e);
 template seq_t mff_rseq<0>::claim_seq(const uint256& txid);
 template uint256 mff_rseq<0>::get_replacement_txid() const;
 template uint256 mff_rseq<0>::get_invalidated_txid() const;
 template seq_t mff_rseq<0>::seq_read();
 template void mff_rseq<0>::seq_write(seq_t seq);
 template bool mff_rseq<0>::test_entry(entry* e);
+template const std::shared_ptr<tx> mff_rseq<0>::register_entry(const tiny::mempool_entry& entry);
+template void mff_rseq<0>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
+template void mff_rseq<0>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
+template void mff_rseq<0>::push_block(int height, uint256 hash);
+template void mff_rseq<0>::pop_block(int height);
 
 template void mff_rseq<1>::apply_block(std::shared_ptr<block> b);
 template void mff_rseq<1>::undo_block_at_height(uint32_t height);
@@ -665,12 +847,17 @@ template seq_t mff_rseq<1>::touched_txid(const uint256& txid, bool count);
 template mff_rseq<1>::mff_rseq(const std::string path, bool readonly);
 template mff_rseq<1>::~mff_rseq();
 template entry* mff_rseq<1>::read_entry();
-template void mff_rseq<1>::write_entry(entry* e);
+// template void mff_rseq<1>::write_entry(entry* e);
 template seq_t mff_rseq<1>::claim_seq(const uint256& txid);
 template uint256 mff_rseq<1>::get_replacement_txid() const;
 template uint256 mff_rseq<1>::get_invalidated_txid() const;
 template seq_t mff_rseq<1>::seq_read();
 template void mff_rseq<1>::seq_write(seq_t seq);
 template bool mff_rseq<1>::test_entry(entry* e);
+template const std::shared_ptr<tx> mff_rseq<1>::register_entry(const tiny::mempool_entry& entry);
+template void mff_rseq<1>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
+template void mff_rseq<1>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
+template void mff_rseq<1>::push_block(int height, uint256 hash);
+template void mff_rseq<1>::pop_block(int height);
 
 } // namespace mff

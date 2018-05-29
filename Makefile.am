@@ -72,10 +72,12 @@ mff_reader_LDADD = \
 
 # mff-conv binary #
 mff_conv_SOURCES = \
-	mff-conv.cpp \
-    tinyblock.h \
     amap.h \
     amap.cpp \
+    mff-conv.cpp \
+    tinyblock.h \
+    tinymempool.h \
+    tinymempool.cpp \
     txmempool_format_rs.cpp \
     txmempool_format_rs.h \
     txmempool_format_aj.cpp \

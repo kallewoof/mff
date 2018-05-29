@@ -40,6 +40,7 @@ int main(int argc, char* const* argv) {
     ca.add_option("rpccall", 'r', req_arg);
     ca.add_option("amap", 'm', req_arg);
     ca.add_option("do-not-append", 'x', no_arg);
+    ca.add_option("mempool-file", 'p', req_arg);
     ca.parse(argc, argv);
 
     if (ca.m.count('h') || ca.l.size() != 4) {
@@ -61,6 +62,8 @@ int main(int argc, char* const* argv) {
         amap::amap_path = ca.m['m'];
         amap::enabled = true;
     }
+
+    std::string mempool_file = ca.m.count('p') ? ca.m['p'] : "";
 
     bool verbose = ca.m.count('v');
     bool overwrite_output = ca.m.count('x');
@@ -91,6 +94,18 @@ int main(int argc, char* const* argv) {
         return 1;
     }
 
+    // map in mempool to out
+    in->mempool.callback = out;
+
+    // load mempool, if provided and if the file exists
+    if (mempool_file != "") {
+        FILE* fp = fopen(mempool_file.c_str(), "rb");
+        if (fp) {
+            fclose(fp);
+            in->load_mempool(mempool_file);
+        }
+    }
+
     size_t out_read = 0;
     mff::entry* e = nullptr;
 
@@ -103,6 +118,8 @@ int main(int argc, char* const* argv) {
     int64_t last_time = e ? e->time : 0;
     int64_t start_time = GetTime();
     int64_t entry_start = 0;
+    int64_t internal_time;
+    in->shared_time = out->shared_time = &internal_time;
     while ((e = in->read_entry())) {
         if (last_time) {
             if (e->time < last_time) {
@@ -112,23 +129,27 @@ int main(int argc, char* const* argv) {
             }
             last_time = 0;
         }
-        if (!entry_start) entry_start = e->time;
-        out->write_entry(e);
+        if (!entry_start) entry_start = internal_time;// e->time;
+        // out->write_entry(e);
         entries++;
         if (!(entries % 100)) {
             long pos = in->tell();
             float done = (float)(100 * pos) / in_bytes;
             int64_t now = GetTime();
             int64_t elapsed = now - start_time; // real time passed
-            int64_t mff_time_elapsed = e->time - entry_start; // input file time passed
+            int64_t mff_time_elapsed = internal_time - entry_start; // input file time passed
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
-            printf(" %02.1f%% %s [%llu, %.3f s/s]\r", done, time_string(in->last_time).c_str(), in->entry_counter, s_per_s);
+            printf(" %02.1f%% %s [%u, %.3fx]\r", done, time_string(internal_time).c_str(), entries, s_per_s);
             fflush(stdout);
         }
     }
     out->flush();
     printf("\n");
     printf("skipped recs = %llu\n", skipped_recs);
+    // save mempool, if provided
+    if (mempool_file != "") {
+        in->save_mempool(mempool_file);
+    }
 }

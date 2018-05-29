@@ -11,6 +11,8 @@
 #include <uint256.h>
 #include <tinytx.h>
 #include <utiltime.h>
+#include <tinymempool.h>
+#include <streams.h>
 
 namespace mff {
 
@@ -265,22 +267,36 @@ struct entry {
         state == ::mff::tx::invalid_unknown ? "???" : "*DATA CORRUPTION*"\
     )
 
-class mff: public seqdict_server {
+class mff: public seqdict_server, public tiny::mempool_callback {
 public:
+    int64_t* shared_time = nullptr;
+    tiny::mempool mempool;
+    void load_mempool(const std::string& path) {
+        FILE* fp = fopen(path.c_str(), "rb");
+        CAutoFile af(fp, SER_DISK, 0);
+        af >> mempool;
+    }
+    void save_mempool(const std::string& path) const {
+        FILE* fp = fopen(path.c_str(), "wb");
+        CAutoFile af(fp, SER_DISK, 0);
+        af << mempool;
+    }
+
     int64_t last_time;
     uint64_t entry_counter;
     virtual long tell() = 0;
     virtual void flush() = 0;
     virtual entry* read_entry() = 0;
-    virtual void write_entry(entry* e) {
-        assert(!"not implemented");
-    }
+    // virtual void write_entry(entry* e) {
+    //     assert(!"not implemented");
+    // }
     virtual seq_t claim_seq(const uint256& txid) override {
         assert(!"not implemented");
     }
     uint8_t prot(CMD cmd, bool known) {
         // printf("- %s -\n", cmd_str(cmd).c_str());
-        return cmd | (known ? CMD::TX_KNOWN_BIT : 0) | (GetTime() - last_time < 254 ? CMD::TIME_REL_BIT : 0);
+        int64_t time = shared_time ? *shared_time : GetTime();
+        return cmd | (known ? CMD::TX_KNOWN_BIT : 0) | (time - last_time < 254 ? CMD::TIME_REL_BIT : 0);
     }
 
     std::shared_ptr<tx> import_tx(seqdict_server* server, std::shared_ptr<tx> t) {

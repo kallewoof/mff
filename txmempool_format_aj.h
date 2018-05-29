@@ -45,8 +45,8 @@ private:
     void insert(tiny::tx& t);
     void confirm(uint32_t height, const uint256& hash, tiny::block& b);
     std::shared_ptr<tx> register_tx(tiny::tx& t);
-    std::map<seq_t, std::vector<std::shared_ptr<tx>>> deps;
-    std::map<uint256, std::vector<std::shared_ptr<tx>> deps_unknown;
+    // std::map<seq_t, std::vector<std::shared_ptr<tx>>> deps;
+    // std::map<uint256, std::vector<std::shared_ptr<tx>> deps_unknown;
     std::vector<std::shared_ptr<entry>> backlog;
     void tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause);
     void check_deps(tiny::tx* cause, const uint256& txid, const uint32_t* index_or_all = nullptr);
