@@ -900,7 +900,7 @@ inline void mff_rseq<I>::update_queues() {
     #define CHILLED_PURGE_HEIGHT    (height - 200)
     if (frozen_queue.count(FROZEN_PURGE_HEIGHT)) {
         if (frozen_queue[FROZEN_PURGE_HEIGHT].size() > 0) {
-            printf("clearing out %zu frozen seqs from height=%u\n", frozen_queue[FROZEN_PURGE_HEIGHT].size(), FROZEN_PURGE_HEIGHT);
+            printf("<<<<<<<< %4zu frozen seqs from height=%u\n", frozen_queue[FROZEN_PURGE_HEIGHT].size(), FROZEN_PURGE_HEIGHT);
             for (seq_t seq : frozen_queue[FROZEN_PURGE_HEIGHT]) {
                 DSL(seq, "update_queues @ %u (frozen)\n", height);
                 // seq_pool.insert(seq);
@@ -914,7 +914,7 @@ inline void mff_rseq<I>::update_queues() {
     }
     if (chilled_queue.count(CHILLED_PURGE_HEIGHT)) {
         if (chilled_queue[CHILLED_PURGE_HEIGHT].size() > 0) {
-            printf("clearing out %zu frozen seqs from height=%u\n", chilled_queue[CHILLED_PURGE_HEIGHT].size(), CHILLED_PURGE_HEIGHT);
+            printf("<<<<<<<<<<<<< %4zu chilled seqs from height=%u\n", chilled_queue[CHILLED_PURGE_HEIGHT].size(), CHILLED_PURGE_HEIGHT);
             for (seq_t seq : chilled_queue[CHILLED_PURGE_HEIGHT]) {
                 DSL(seq, "update_queues @ %u (chilled)\n", height);
                 // seq_pool.insert(seq);
@@ -926,12 +926,12 @@ inline void mff_rseq<I>::update_queues() {
         }
         chilled_queue.erase(CHILLED_PURGE_HEIGHT);
     }
-    for (uint32_t h = CHILLED_PURGE_HEIGHT; h <= height; ++h) {
+    for (uint32_t h = FROZEN_PURGE_HEIGHT; h <= height; ++h) {
         size_t f = frozen_queue.count(h) ? frozen_queue[h].size() : 0;
         size_t c = chilled_queue.count(h) ? chilled_queue[h].size() : 0;
-        if (f + c) {
+        if (f + c && (h < FROZEN_PURGE_HEIGHT + 5 || h > height - 5)) {
             printf("%-6u : %4zu %4zu\n", h, f, c);
-        }
+        } else if (h == height - 5) printf("...... . .... ....\n");
     }
     printf("%zu/%llu (%.2f%%) known transactions in memory\n", txs.size(), nextseq, 100.0 * txs.size() / nextseq);
 }
