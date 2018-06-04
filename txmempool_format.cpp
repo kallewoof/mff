@@ -7,8 +7,8 @@
 
 #include <txmempool_format.h>
 
-// #define DEBUG_SEQ 14937
-#define DSL(s, fmt...) // if (s == DEBUG_SEQ) { printf("[SEQ] " fmt); }
+// #define DEBUG_SEQ 68468
+#define DSL(s, fmt...) //if (s == DEBUG_SEQ) { printf("[SEQ] " fmt); }
 // #define l(args...) if (active_chain.height == 521703) { printf(args); }
 // #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
@@ -123,6 +123,17 @@ mff_rseq<I>::mff_rseq(const std::string path, bool readonly) : in_fp(setup_file(
     lastflush = GetTime();
     // out.debugme(true);
     mplinfo("start %s\n", path.c_str());
+    char magic[3];
+    if (2 == fread(magic, 1, 2, in_fp)) {
+        magic[2] = 0;
+        if (strcmp(magic, "BM")) {
+            fprintf(stderr, "invalid file header - assuming pre-magic version\n");
+            fseek(in_fp, 0, SEEK_SET);
+        }
+    } else if (!readonly) {
+        sprintf(magic, "BM");
+        fwrite(magic, 1, 2, in_fp);
+    }
 }
 
 template<int I>
@@ -291,7 +302,7 @@ bool mff_rseq<I>::read_entry() {
             serializer.deserialize_tx(in, *t);
             // in >> tser;
             last_recorded_tx = t;
-            // DSL(t->seq, "TX_REC\n");
+            DSL(t->seq, "TX_REC\n");
             if (txs.count(t->seq)) {
                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
             }
@@ -313,6 +324,9 @@ bool mff_rseq<I>::read_entry() {
             mplinfo("TX_IN(): "); fflush(stdout);
             uint64_t seq = seq_read();
             DSL(seq, "TX_IN\n");
+            if (!txs.count(seq)) {
+                fprintf(stderr, "*** missing seq=%llu in txs\n", seq);
+            }
             assert(txs.count(seq));
             last_recorded_tx = txs[seq];
             if (txs.count(seq)) {
@@ -886,7 +900,7 @@ inline void mff_rseq<I>::update_queues() {
     #define CHILLED_PURGE_HEIGHT    (height - 200)
     if (frozen_queue.count(FROZEN_PURGE_HEIGHT)) {
         if (frozen_queue[FROZEN_PURGE_HEIGHT].size() > 0) {
-            printf("moving %zu frozen seqs into seq pool from height=%u\n", frozen_queue[FROZEN_PURGE_HEIGHT].size(), FROZEN_PURGE_HEIGHT);
+            printf("clearing out %zu frozen seqs from height=%u\n", frozen_queue[FROZEN_PURGE_HEIGHT].size(), FROZEN_PURGE_HEIGHT);
             for (seq_t seq : frozen_queue[FROZEN_PURGE_HEIGHT]) {
                 DSL(seq, "update_queues @ %u (frozen)\n", height);
                 // seq_pool.insert(seq);
@@ -900,7 +914,7 @@ inline void mff_rseq<I>::update_queues() {
     }
     if (chilled_queue.count(CHILLED_PURGE_HEIGHT)) {
         if (chilled_queue[CHILLED_PURGE_HEIGHT].size() > 0) {
-            printf("moving %zu chilled seqs into seq pool from height=%u\n", chilled_queue[CHILLED_PURGE_HEIGHT].size(), CHILLED_PURGE_HEIGHT);
+            printf("clearing out %zu frozen seqs from height=%u\n", chilled_queue[CHILLED_PURGE_HEIGHT].size(), CHILLED_PURGE_HEIGHT);
             for (seq_t seq : chilled_queue[CHILLED_PURGE_HEIGHT]) {
                 DSL(seq, "update_queues @ %u (chilled)\n", height);
                 // seq_pool.insert(seq);
@@ -912,6 +926,7 @@ inline void mff_rseq<I>::update_queues() {
         }
         chilled_queue.erase(CHILLED_PURGE_HEIGHT);
     }
+    printf("\n");
     for (uint32_t h = CHILLED_PURGE_HEIGHT; h <= height; ++h) {
         size_t f = frozen_queue.count(h) ? frozen_queue[h].size() : 0;
         size_t c = chilled_queue.count(h) ? chilled_queue[h].size() : 0;
