@@ -163,6 +163,7 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
         tx_freeze(seq);
         // l("- %s\n", txs[seq]->id.ToString().c_str());
     }
+    update_queues();
 }
 
 template<int I>
