@@ -81,7 +81,9 @@ mff_conv_SOURCES = \
     txmempool_format_rs.cpp \
     txmempool_format_rs.h \
     txmempool_format_aj.cpp \
-    txmempool_format_aj.h
+    txmempool_format_aj.h \
+    txmempool_format_timetail.h \
+    txmempool_format_timetail.cpp
 mff_conv_CPPFLAGS = $(AM_CPPFLAGS)
 mff_conv_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 mff_conv_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)

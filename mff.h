@@ -230,31 +230,31 @@ struct chain {
     std::vector<std::shared_ptr<block>> chain;
 };
 
-class seqdict_server {
-public:
-    seqdict_t seqs;
-    txs_t txs;
-    virtual seq_t claim_seq(const uint256& txid) = 0;
-};
+// class seqdict_server {
+// public:
+//     seqdict_t seqs;
+//     txs_t txs;
+//     virtual seq_t claim_seq(const uint256& txid) = 0;
+// };
 
-struct entry {
-    entry(seqdict_server* sds_in) : sds(sds_in) {}
-    seqdict_server* sds;
-    CMD cmd;
-    bool known;
-    int64_t time;
-    std::shared_ptr<tx> tx; // TX_REC, TX_IN, TX_OUT
-    std::shared_ptr<block> block_in; // TX_CONF
-    tx::out_reason_enum out_reason;
-    tx::invalid_reason_enum invalid_reason;
-    bool invalid_cause_known;
-    uint256 invalid_replacement; // TX_INVALID
-    const tiny::tx* invalid_tinytx; // TX_INVALID
-    std::vector<uint8_t>* invalid_txhex; // TX_INVALID
-    uint32_t unconf_height;
-    uint64_t unconf_count; // for known=false
-    std::vector<uint256> unconf_txids; // for known=false
-};
+// struct entry {
+//     entry(seqdict_server* sds_in) : sds(sds_in) {}
+//     seqdict_server* sds;
+//     CMD cmd;
+//     bool known;
+//     int64_t time;
+//     std::shared_ptr<tx> tx; // TX_REC, TX_IN, TX_OUT
+//     std::shared_ptr<block> block_in; // TX_CONF
+//     tx::out_reason_enum out_reason;
+//     tx::invalid_reason_enum invalid_reason;
+//     bool invalid_cause_known;
+//     uint256 invalid_replacement; // TX_INVALID
+//     const tiny::tx* invalid_tinytx; // TX_INVALID
+//     std::vector<uint8_t>* invalid_txhex; // TX_INVALID
+//     uint32_t unconf_height;
+//     uint64_t unconf_count; // for known=false
+//     std::vector<uint256> unconf_txids; // for known=false
+// };
 
 #define tx_out_reason_str(reason) (reason == ::mff::tx::out_reason_low_fee ? "low fee" :\
         reason == ::mff::tx::out_reason_age_expiry ? "age expiry" :\
@@ -267,71 +267,131 @@ struct entry {
         state == ::mff::tx::invalid_unknown ? "???" : "*DATA CORRUPTION*"\
     )
 
-class mff: public seqdict_server, public tiny::mempool_callback {
+class mff: public tiny::mempool_callback {
 public:
+    int64_t last_time;
+    seqdict_t seqs;
+    txs_t txs;
+    uint64_t entry_counter = 0;
     int64_t* shared_time = nullptr;
-    tiny::mempool mempool;
+    std::shared_ptr<tiny::mempool> mempool;
     void load_mempool(const std::string& path) {
+        if (!mempool.get()) {
+            mempool = std::make_shared<tiny::mempool>();
+        }
         FILE* fp = fopen(path.c_str(), "rb");
         CAutoFile af(fp, SER_DISK, 0);
-        af >> mempool;
+        af >> *mempool;
     }
     void save_mempool(const std::string& path) const {
         FILE* fp = fopen(path.c_str(), "wb");
         CAutoFile af(fp, SER_DISK, 0);
-        af << mempool;
+        af << *mempool;
     }
 
-    int64_t last_time;
-    uint64_t entry_counter;
     virtual long tell() = 0;
     virtual void flush() = 0;
-    virtual entry* read_entry() = 0;
+    virtual bool read_entry() = 0;
+    virtual int64_t peek_time() = 0;
     // virtual void write_entry(entry* e) {
     //     assert(!"not implemented");
     // }
-    virtual seq_t claim_seq(const uint256& txid) override {
-        assert(!"not implemented");
-    }
+    // virtual seq_t claim_seq(const uint256& txid) override {
+    //     assert(!"not implemented");
+    // }
     uint8_t prot(CMD cmd, bool known) {
         // printf("- %s -\n", cmd_str(cmd).c_str());
+        entry_counter++;
         int64_t time = shared_time ? *shared_time : GetTime();
         return cmd | (known ? CMD::TX_KNOWN_BIT : 0) | (time - last_time < 254 ? CMD::TIME_REL_BIT : 0);
     }
 
-    std::shared_ptr<tx> import_tx(seqdict_server* server, std::shared_ptr<tx> t) {
-        // printf("converting %llu=%s == %s: ", server->seqs[t->id], t->id.ToString().c_str(), server->txs[server->seqs[t->id]]->id.ToString().c_str());
-        // see if we have this tx
-        if (seqs.count(t->id)) {
-            // well then
-            assert(txs.count(seqs[t->id]));
-            // printf("got it already %s\n", txs[seqs[t->id]]->id.ToString().c_str());
-            assert(txs[seqs[t->id]]->id == t->id);
-            return txs[seqs[t->id]];
-        }
-        std::shared_ptr<tx> t2 = std::make_shared<tx>(*t);
-        t2->seq = claim_seq(t2->id);
-        // printf("prevouts ");
-        // convert the inputs
-        for (outpoint& o : t2->vin) {
-            if (o.is_known()) {
-                uint256 prevhash = server->txs[o.get_seq()]->id;
-                assert(seqs.count(prevhash));
-                o.seq = seqs[prevhash];
+    // std::shared_ptr<tx> import_tx(seqdict_server* server, std::shared_ptr<tx> t) {
+    //     // printf("converting %llu=%s == %s: ", server->seqs[t->id], t->id.ToString().c_str(), server->txs[server->seqs[t->id]]->id.ToString().c_str());
+    //     // see if we have this tx
+    //     if (seqs.count(t->id)) {
+    //         // well then
+    //         assert(txs.count(seqs[t->id]));
+    //         // printf("got it already %s\n", txs[seqs[t->id]]->id.ToString().c_str());
+    //         assert(txs[seqs[t->id]]->id == t->id);
+    //         return txs[seqs[t->id]];
+    //     }
+    //     std::shared_ptr<tx> t2 = std::make_shared<tx>(*t);
+    //     t2->seq = claim_seq(t2->id);
+    //     // printf("prevouts ");
+    //     // convert the inputs
+    //     for (outpoint& o : t2->vin) {
+    //         if (o.is_known()) {
+    //             uint256 prevhash = server->txs[o.get_seq()]->id;
+    //             assert(seqs.count(prevhash));
+    //             o.seq = seqs[prevhash];
+    //         }
+    //     }
+    //     // printf("got %llu=%s\n", seqs[t->id], t->id.ToString().c_str());
+    //     return t2;
+    // }
+    // 
+    // std::shared_ptr<block> import_block(seqdict_server* server, std::shared_ptr<block> blk) {
+    //     std::shared_ptr<block> blk2 = std::make_shared<block>(*blk);
+    //     // convert the known vector
+    //     size_t size = blk2->known.size();
+    //     for (size_t i = 0; i < size; ++i) {
+    //         blk2->known[i] = seqs[server->txs[blk2->known[i]]->id];
+    //     }
+    //     return blk2;
+    // }
+};
+
+class cluster {
+private:
+    std::vector<int64_t> times;
+public:
+    std::shared_ptr<tiny::mempool> mempool;
+    std::vector<mff*> nodes;
+    int64_t time;
+    bool first_read = true;
+    cluster() {
+        mempool = std::make_shared<tiny::mempool>();
+    }
+    void add(mff* m) {
+        assert(mempool.get());
+        assert(!m->mempool.get());
+        m->mempool = mempool;
+        nodes.push_back(m);
+        times.push_back(0);
+    }
+    bool read_entry() {
+        if (nodes.size() == 1) {
+            for (;;) {
+                bool rv = nodes[0]->read_entry();
+                if (rv && *nodes[0]->shared_time == 0) continue;
+                if (rv) time = *nodes[0]->shared_time;
+                return rv;
             }
         }
-        // printf("got %llu=%s\n", seqs[t->id], t->id.ToString().c_str());
-        return t2;
-    }
-
-    std::shared_ptr<block> import_block(seqdict_server* server, std::shared_ptr<block> blk) {
-        std::shared_ptr<block> blk2 = std::make_shared<block>(*blk);
-        // convert the known vector
-        size_t size = blk2->known.size();
-        for (size_t i = 0; i < size; ++i) {
-            blk2->known[i] = seqs[server->txs[blk2->known[i]]->id];
+        if (first_read) {
+            first_read = false;
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                times[i] = nodes[i]->peek_time();
+            }
         }
-        return blk2;
+        // find earliest entry
+        int64_t best_time = std::numeric_limits<int64_t>::max();
+        int64_t best_i = -1;
+        for (size_t i = 0; i < nodes.size(); i++) {
+            if (times[i] && (best_i < 0 || times[i] < best_time)) {
+                best_i = i;
+                best_time = times[i];
+            }
+        }
+        if (best_i >= 0) {
+            bool rv = nodes[best_i]->read_entry();
+            if (rv) times[best_i] = nodes[best_i]->peek_time();
+            time = *nodes[best_i]->shared_time;
+            return rv;
+        }
+        // we ran out of entries; guess this is good bye
+        return false;
     }
 };
 

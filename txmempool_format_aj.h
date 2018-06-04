@@ -47,13 +47,13 @@ private:
     std::shared_ptr<tx> register_tx(tiny::tx& t);
     // std::map<seq_t, std::vector<std::shared_ptr<tx>>> deps;
     // std::map<uint256, std::vector<std::shared_ptr<tx>> deps_unknown;
-    std::vector<std::shared_ptr<entry>> backlog;
-    void tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause);
-    void check_deps(tiny::tx* cause, const uint256& txid, const uint32_t* index_or_all = nullptr);
-    void check_deps(tiny::tx& newcomer);
-    void push_entry(std::shared_ptr<entry> e);
+    // std::vector<std::shared_ptr<entry>> backlog;
+    // void tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause);
+    // void check_deps(tiny::tx* cause, const uint256& txid, const uint32_t* index_or_all = nullptr);
+    // void check_deps(tiny::tx& newcomer);
+    // void push_entry(std::shared_ptr<entry> e);
     std::vector<std::shared_ptr<tiny::tx>> backlog_ttxs;
-    std::shared_ptr<entry> previous_entry; // used to prevent from destroying before use
+    // std::shared_ptr<entry> previous_entry; // used to prevent from destroying before use
 public:
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
@@ -77,7 +77,8 @@ public:
     mff_aj(const std::string path = "", bool readonly = true);
     ~mff_aj();
 
-    entry* read_entry() override;
+    bool read_entry() override;
+    int64_t peek_time() override;
     long tell() override { return ftell(in_fp); }
 
     void flush() override { fflush(in_fp); }

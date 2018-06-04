@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TXMEMPOOL_FORMAT_H
-#define BITCOIN_TXMEMPOOL_FORMAT_H
+#ifndef BITCOIN_TXMEMPOOL_FORMAT_TIMETAIL_H
+#define BITCOIN_TXMEMPOOL_FORMAT_TIMETAIL_H
 
 #include <mff.h>
 #include <serialize.h>
@@ -13,17 +13,17 @@ extern uint64_t skipped_recs;
 
 namespace mff {
 
-class rseq_container {
+class rseq_tt_container {
 public:
     virtual seq_t seq_read() = 0;
     virtual void seq_write(seq_t seq) = 0;
 };
 
-#define MAX_RSEQ_CONTAINERS 2
-extern rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
+#define MAX_RSEQ_TT_CONTAINERS 2
+extern rseq_tt_container* g_rseq_tt_ctr[MAX_RSEQ_TT_CONTAINERS];
 
 template <typename Stream, int I>
-class rseq_adapter: public adapter<Stream> {
+class rseq_tt_adapter: public adapter<Stream> {
 public:
     #define DEBUG_SER(args...) // printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
@@ -32,7 +32,7 @@ public:
         Serialize(s, VARINT(o.n));
         if (o.known) {
             DEBUG_SER("o.seq = %llu\n", o.seq);
-            g_rseq_ctr[I]->seq_write(o.seq);
+            g_rseq_tt_ctr[I]->seq_write(o.seq);
         } else {
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
             Serialize(s, o.txid);
@@ -43,7 +43,7 @@ public:
         Unserialize(s, VARINT(o.n));
         DEBUG_SER("o.n=%llu\n", o.n);
         if (o.known) {
-            o.seq = g_rseq_ctr[I]->seq_read();
+            o.seq = g_rseq_tt_ctr[I]->seq_read();
             DEBUG_SER("o.seq = %llu\n", o.seq);
         } else {
             Unserialize(s, o.txid);
@@ -55,7 +55,7 @@ public:
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
         Serialize(s, t.id);
         DEBUG_SER("- seq: %llu\n", t.seq);
-        g_rseq_ctr[I]->seq_write(t.seq);
+        g_rseq_tt_ctr[I]->seq_write(t.seq);
         DEBUG_SER("- weight: %llu\n", t.weight);
         Serialize(s, VARINT(t.weight));
         DEBUG_SER("- fee: %llu\n", t.fee);
@@ -80,7 +80,7 @@ public:
         DEBUG_SER("deserializing tx\n");
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
-        t.seq = g_rseq_ctr[I]->seq_read();
+        t.seq = g_rseq_tt_ctr[I]->seq_read();
         DEBUG_SER("- seq: %llu\n", t.seq);
         Unserialize(s, VARINT(t.weight));
         DEBUG_SER("- weight: %llu\n", t.weight);
@@ -111,7 +111,7 @@ public:
         if (b.is_known) return;
         Serialize(s, VARINT(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            g_rseq_ctr[I]->seq_write(b.known[i]);
+            g_rseq_tt_ctr[I]->seq_write(b.known[i]);
         }
         Serialize(s, b.unknown);
     }
@@ -122,20 +122,20 @@ public:
         Unserialize(s, VARINT(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_rseq_ctr[I]->seq_read();
+            b.known[i] = g_rseq_tt_ctr[I]->seq_read();
         }
         Unserialize(s, b.unknown);
     }
 };
 
 template<int I>
-class mff_rseq: public mff, public rseq_container {
+class mff_rseq_tt: public mff, public rseq_tt_container {
 private:
     constexpr static size_t MAX_BLOCKS = 6; // keep this many blocks
     int64_t lastflush;
     FILE* in_fp;
     CAutoFile in;
-    rseq_adapter<CAutoFile, I> serializer;
+    rseq_tt_adapter<CAutoFile, I> serializer;
     std::vector<uint256> pending_conf_unknown;
     std::vector<seq_t> pending_conf_known;
 
@@ -172,8 +172,8 @@ public:
     std::vector<uint8_t> last_invalidated_txhex; // for TX_INVALID
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
-    mff_rseq(const std::string path = "", bool readonly = true);
-    ~mff_rseq();
+    mff_rseq_tt(const std::string path = "", bool readonly = true);
+    ~mff_rseq_tt();
     bool read_entry() override;
     int64_t peek_time() override;
     // void write_entry(entry* e) override;
@@ -197,4 +197,4 @@ public:
 
 } // namespace mff
 
-#endif // BITCOIN_TXMEMPOOL_FORMAT_H
+#endif // BITCOIN_TXMEMPOOL_FORMAT_TIMETAIL_H

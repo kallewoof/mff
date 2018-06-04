@@ -87,7 +87,7 @@ inline FILE* setup_file(const char* path, bool readonly) {
     return fp;
 }
 
-mff_rs::mff_rs(const std::string path, bool readonly) : last_entry(this), in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
+mff_rs::mff_rs(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
     // out.debugme(true);
     entry_counter = 0;
     mplinfo("start %s\n", path.c_str());
@@ -191,7 +191,11 @@ uint256 mff_rs::get_invalidated_txid() const {
     return invalidated_seq && txs.count(invalidated_seq) ? txs.at(invalidated_seq)->id : invalidated_txid;
 }
 
-entry* mff_rs::read_entry() {
+int64_t mff_rs::peek_time() {
+    assert(!"not implemented");
+}
+
+bool mff_rs::read_entry() {
     // long x = ftell(in_fp); showinfo = false; x > 30304207 && x < 30305869;
     entry_counter++;
     uint8_t u8;
@@ -200,10 +204,10 @@ entry* mff_rs::read_entry() {
     try {
         in >> u8;
     } catch (std::ios_base::failure& f) {
-        return nullptr;
+        return false;
     }
-    last_entry.cmd = last_cmd = cmd = (CMD)(u8 & 0x1f); // 0b0001 1111
-    last_entry.known = known = (u8 >> 6) & 1;
+    last_cmd = cmd = (CMD)(u8 & 0x1f); // 0b0001 1111
+    known = (u8 >> 6) & 1;
     timerel = (u8 >> 7) & 1;
     last_seqs.clear();
     switch (cmd) {
@@ -217,7 +221,7 @@ entry* mff_rs::read_entry() {
             auto t = std::make_shared<tx>();
             serializer.deserialize_tx(in, *t);
             // in >> *t;
-            last_entry.tx = last_recorded_tx = t;
+            last_recorded_tx = t;
             DSL(t->seq, "TX_REC\n");
             if (txs.count(t->seq)) {
                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
@@ -241,7 +245,6 @@ entry* mff_rs::read_entry() {
             in >> COMPACTSIZE(seq);
             DSL(seq, "TX_IN\n");
             assert(txs.count(seq));
-            last_entry.tx = txs[seq];
             if (txs.count(seq)) {
                 txs[seq]->location = tx::location_in_mempool;
             }
@@ -259,12 +262,11 @@ entry* mff_rs::read_entry() {
                 // in >> b;
                 assert(blocks.count(b.hash));
                 // l1("block %u=%s\n", b.height, b.hash.ToString().c_str());
-                apply_block(last_entry.block_in = blocks[b.hash]);
+                apply_block(blocks[b.hash]);
             } else {
                 auto b = std::make_shared<block>();
                 serializer.deserialize_block(in, *b);
                 // in >> *b;
-                last_entry.block_in = b;
                 blocks[b->hash] = b;
                 // l1("block %u=%s\n", b->height, b->hash.ToString().c_str());
                 apply_block(b);
@@ -282,9 +284,9 @@ entry* mff_rs::read_entry() {
             in >> reason;
             assert(txs.count(seq));
             last_out_reason = reason;
-            auto t = last_entry.tx = txs[seq];
+            auto t = txs[seq];
             t->location = tx::location_discarded;
-            last_entry.out_reason = t->out_reason = (tx::out_reason_enum)reason;
+            t->out_reason = (tx::out_reason_enum)reason;
             mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
             break;
         }
@@ -302,22 +304,19 @@ entry* mff_rs::read_entry() {
             read_txseq_keep(known, tx_invalid, invalidated_txid);
             // printf("invalid tx %s\n", (tx_invalid ? txs[tx_invalid]->id : invalidated_txid).ToString().c_str());
             assert(tx_invalid);
-            last_entry.tx = txs[tx_invalid];
             invalidated_seq = tx_invalid;
             last_seqs.push_back(tx_invalid);
             mplinfo_("--- state\n");
             in >> state;
-            bool cause_known = last_entry.invalid_cause_known = (state >> 6) & 1;
+            bool cause_known = (state >> 6) & 1;
             state &= 0x1f;
             last_invalid_state = state;
-            last_entry.invalid_reason = (tx::invalid_reason_enum)state;
             mplinfo_("--- state = %d (cause_known = %d)\n", state, cause_known);
             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
                 read_txseq_keep(cause_known, tx_cause, replacement_txid);
                 mplinfo_("--- read_txseq(%d, tx_cause) = %llu\n", cause_known, tx_cause);
                 last_seqs.push_back(tx_cause);
                 replacement_seq = tx_cause;
-                last_entry.invalid_replacement = replacement_seq ? txs[replacement_seq]->id : replacement_txid;
                 mplinfo_("--- invalid replacement = %s\n", replacement_txid.ToString().c_str());
             }
             mplinfo_("----- tx deserialization begins -----\n");
@@ -329,8 +328,6 @@ entry* mff_rs::read_entry() {
             last_invalidated_txhex.resize(txhex_end - txhex_start);
             fread(last_invalidated_txhex.data(), 1, txhex_end - txhex_start, in_fp);
             assert(ftell(in_fp) == txhex_end);
-            last_entry.invalid_tinytx = &last_invalidated_tx;
-            last_entry.invalid_txhex = &last_invalidated_txhex;
 
             if (tx_invalid) {
                 auto t = txs[tx_invalid];
@@ -348,21 +345,18 @@ entry* mff_rs::read_entry() {
             mplinfo("TX_UNCONF(): "); fflush(stdout);
             uint32_t height;
             in >> height;
-            last_entry.unconf_height = height;
             if (known) {
                 mplinfo_("known, height=%u\n", height);
                 undo_block_at_height(height);
             } else {
                 mplinfo_("unknown, height=%u\n", height);
-                uint64_t count = last_entry.unconf_count = ReadCompactSize(in);
-                last_entry.unconf_txids.resize(count);
+                uint64_t count = ReadCompactSize(in);
                 mplinfo("%llu transactions\n", count);
                 for (uint64_t i = 0; i < count; ++i) {
                     uint64_t seq = ReadCompactSize(in);
                     mplinfo("%llu: seq = %llu\n", i, seq);
                     if (seq) {
                         assert(txs.count(seq));
-                        last_entry.unconf_txids[i] = txs[seq]->id;
                         last_seqs.push_back(seq);
                         txs[seq]->location = tx::location_in_mempool;
                     }
@@ -376,9 +370,9 @@ entry* mff_rs::read_entry() {
             assert(!"unknown command"); // todo: exceptionize
     }
     read_time(last_time);
-    last_entry.time = last_time;
+    if (shared_time) *shared_time = last_time;
     // showinfo = false;
-    return &last_entry;
+    return true;
 }
 
 } // namespace mff

@@ -75,6 +75,9 @@ struct mempool_entry {
         }
         return fee;
     }
+    double feerate() const {
+        return (double)fee() / x->GetWeight();
+    }
 };
 
 class mempool_callback {
@@ -88,10 +91,15 @@ public:
 class mempool {
 private:
     MemPoolRemovalReason determine_reason(std::shared_ptr<const mempool_entry> added, std::shared_ptr<const mempool_entry> removed);
+    void enqueue(const std::shared_ptr<const mempool_entry>& entry, bool preserve_size_limits = true);
 public:
+    constexpr static size_t MAX_ENTRIES = 10000; // keep max this many transactions
+    constexpr static size_t MAX_REFS = 50000; // keep this many references
     mempool_callback* callback = nullptr;
     std::map<uint256, std::shared_ptr<const mempool_entry>> entry_map;
     std::map<uint256, std::vector<std::shared_ptr<const mempool_entry>>> ancestry;
+    //! Fee-ordered list of mempool entries used for purging
+    std::vector<std::shared_ptr<const mempool_entry>> entry_queue;
     /**
      * Insert x into the mempool, removing any conflicting transactions.
      */
@@ -120,10 +128,28 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         if (entry_map.size() > 0) {
-            // 
+            // assert validity
+            std::set<uint256> inputs;
+            uint32_t max_ins = 0;
+            uint64_t sum_ins = 0;
+            for (const auto& e : entry_map) {
+                if (e.second->x->vin.size() > max_ins) max_ins = e.second->x->vin.size();
+                sum_ins += e.second->x->vin.size();
+                for (const auto& vin : e.second->x->vin) {
+                    inputs.insert(vin.prevout.hash);
+                }
+            }
+            assert(ancestry.size() == inputs.size());
+            printf("ancestry size = inputs size; max inputs = %u; tx count = %zu, input sum = %llu, avg in/tx = %.2f\n", max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
         }
         READWRITE(entry_map);
         READWRITE(ancestry);
+        // populate entry queue
+        if (entry_queue.size() == 0) {
+            for (const auto& it : entry_map) {
+                enqueue(it.second, false);
+            }
+        }
         printf("(%zu entries in mempool, %zu ancestry records)\n", entry_map.size(), ancestry.size());
     }
 };

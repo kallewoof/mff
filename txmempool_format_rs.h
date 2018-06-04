@@ -126,7 +126,6 @@ private:
 
     void apply_block(std::shared_ptr<block> b);
     void undo_block_at_height(uint32_t height);
-    entry last_entry;
 public:
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
@@ -145,7 +144,8 @@ public:
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
     mff_rs(const std::string path = "", bool readonly = true);
-    entry* read_entry() override;
+    bool read_entry() override;
+    int64_t peek_time() override;
     // void write_entry(entry* e) override;
     long tell() override { return ftell(in_fp); }
     uint256 get_replacement_txid() const;

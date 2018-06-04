@@ -1,14 +1,19 @@
 #include <tinymempool.h>
 #include <amap.h>
+#include <cmath>
 
 namespace tiny {
 
 bool debug_ancestry = false;
 
+template<typename T>
+typename T::const_iterator find_shared_entry(const T& v, const std::shared_ptr<const mempool_entry>& entry) {
+    return std::find_if(v.begin(), v.end(), [entry](std::shared_ptr<const mempool_entry> const& e) {
+        return *e == *entry;
+    });
+}
+
 void mempool::insert_tx(std::shared_ptr<tx> x) {
-    if (x->hash == uint256S("535a1b4a6eb47a5d22e19c439415bba6b9ae8f200c4806d30886a7d9649ffca2")) {
-        printf("%s\n", x->hash.ToString().c_str());
-    }
     // avoid duplicate insertions
     if (entry_map.count(x->hash)) return;
 
@@ -67,6 +72,9 @@ void mempool::insert_tx(std::shared_ptr<tx> x) {
     if (callback) {
         callback->add_entry(entry);
     }
+
+    // enqueue for potential removal
+    enqueue(entry);
 }
 
 void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRemovalReason reason, std::shared_ptr<tx> cause) {
@@ -85,22 +93,24 @@ void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRe
     if (!entry->x->IsCoinBase()) {
         for (const auto& in : entry->x->vin) {
             assert(ancestry.count(in.prevout.hash));
-            auto it = std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(), 
-            [entry](std::shared_ptr<const mempool_entry> const& e) {
-                return *e == *entry;
-            });
+            auto it = find_shared_entry(ancestry[in.prevout.hash], entry);
+            //  std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(), 
+            // [entry](std::shared_ptr<const mempool_entry> const& e) {
+            //     return *e == *entry;
+            // });
             if (it == ancestry[in.prevout.hash].end()) {
                 printf("cannot find %s in ancestry[%s]:\n", entry->x->hash.ToString().c_str(), in.prevout.hash.ToString().c_str());
                 debug_ancestry = true;
-                std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(), 
-                [entry](std::shared_ptr<const mempool_entry> const& e) {
-                    return *e == *entry;
-                });
+                find_shared_entry(ancestry[in.prevout.hash], entry);
+                // std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(), 
+                // [entry](std::shared_ptr<const mempool_entry> const& e) {
+                //     return *e == *entry;
+                // });
                 for (auto it : ancestry[in.prevout.hash]) {
                     printf("- %s: %s==%s ? %d; e1=e2 ? %d\n", it->x->hash.ToString().c_str(), entry->x->hash.ToString().c_str(), it->x->hash.ToString().c_str(), entry->x->hash == it->x->hash, entry == it);
                 }
                 debug_ancestry = false;
-                printf("(EOL)\n");
+                printf("(END)\n");
             }
             assert(it != ancestry[in.prevout.hash].end());
             ancestry[in.prevout.hash].erase(it);
@@ -112,6 +122,12 @@ void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRe
 
     // remove from entry map
     entry_map.erase(entry->x->hash);
+
+    // remove from entry queue
+    auto it = find_shared_entry(entry_queue, entry);
+    assert(it != entry_queue.end());
+    entry_queue.erase(it);
+    // entry_queue.erase(std::find(entry_queue.begin(), entry_queue.end(), entry));
 }
 
 void mempool::process_block(int height, uint256 hash, const std::vector<tx>& txs) {
@@ -169,6 +185,33 @@ MemPoolRemovalReason mempool::determine_reason(std::shared_ptr<const mempool_ent
     // absolute fee is higher, feerate is higher, and all inputs in the evicted
     // transaction were spent in the new one
     return MemPoolRemovalReason::REPLACED;
+}
+
+void mempool::enqueue(const std::shared_ptr<const mempool_entry>& entry, bool preserve_size_limits) {
+    size_t l = 0, r = entry_queue.size(), m = 0;
+    double in_feerate = entry->feerate();
+    while (r > l) {
+        m = l+((r-l)>>1);
+        double feerate = entry_queue[m]->feerate();
+        // printf("enqueue FR=%lf ([%zu..%zu]: %zu=%lf)\n", in_feerate, l, r, m, feerate);
+        if (std::fabs(in_feerate - feerate) < 1) break;
+        if (in_feerate < feerate) {
+            // in cheaper, move towards front
+            r = m;
+        } else {
+            // in more expensive, move towards end
+            l = m + 1;
+        }
+    }
+    // if (entry_queue.size() > m) printf("enqueue FR=%lf: %zu=%lf\n", in_feerate, m, entry_queue[m]->feerate());
+    entry_queue.insert(entry_queue.begin() + m, entry);
+
+    if (preserve_size_limits) {
+        // do not exceed entry/ref limit
+        while (entry_queue.size() > MAX_ENTRIES || ancestry.size() > MAX_REFS) {
+            remove_entry(entry_queue[0], MemPoolRemovalReason::SIZELIMIT);
+        }
+    }
 }
 
 } // namespace tiny

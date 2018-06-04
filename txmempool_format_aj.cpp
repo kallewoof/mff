@@ -23,79 +23,11 @@ namespace mff {
 
 std::string aj_rpc_call = "";
 
-template<typename T>
-inline bool find_erase(std::vector<T>& v, const T& e) {
-    auto it = std::find(std::begin(v), std::end(v), e);
-    if (it == std::end(v)) return false;
-    v.erase(it);
-    return true;
-}
-
 // bool showinfo = false;
 #define mplinfo_(args...) // if (showinfo) { printf(args); }
 #define mplinfo(args...) // if (showinfo) { printf("[MPL::info] " args); }
 #define mplwarn(args...) printf("[MPL::warn] " args)
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
-
-#define read_time(t) \
-    if (timerel) {\
-        uint8_t r; \
-        in >> r; \
-        t = last_time + r; \
-    } else { \
-        static_assert(sizeof(t) == 8, #t " is of wrong type! Must be int64_t!"); \
-        in >> t; \
-    }
-
-#define write_time(rel) do {\
-        if (rel & CMD::TIME_REL_BIT) {\
-            int64_t tfull = GetTime() - last_time;\
-            uint8_t t = tfull <= 255 ? tfull : 255;\
-            in << t;\
-            last_time += t;\
-        } else {\
-            last_time = GetTime();\
-            in << last_time;\
-        }\
-        sync();\
-    } while (0)
-
-#define write_set_time(rel, time) do {\
-        if (rel & CMD::TIME_REL_BIT) {\
-            int64_t tfull = time - last_time;\
-            uint8_t t = tfull <= 255 ? tfull : 255;\
-            in << t;\
-            last_time += t;\
-        } else {\
-            last_time = time;\
-            in << last_time;\
-        }\
-        sync();\
-    } while (0)
-
-#define read_txseq_keep(known, seq, h) \
-    if (known) { \
-        seq = seq_read(); \
-    } else { \
-        in >> h; \
-        seq = seqs.count(h) ? seqs[h] : 0; \
-    }
-
-#define read_txseq(known, seq) \
-    if (known) { \
-        seq = seq_read(); \
-    } else { \
-        uint256 h; \
-        in >> h; \
-        seq = seqs.count(h) ? seqs[h] : 0; \
-    }
-
-#define write_txref(seq, id) \
-    if (seq) { \
-        seq_write(seq); \
-    } else { \
-        in << id; \
-    }
 
 inline FILE* setup_file(const char* path, bool readonly) {
     FILE* fp = fopen(path, readonly ? "r" : "r+");
@@ -161,16 +93,6 @@ void mff_aj::undo_block_at_height(uint32_t height) {
         last_seqs.push_back(seq);
     }
 }
-
-inline std::string bits(uint8_t u) {
-    std::string s = "";
-    for (uint8_t i = 128; i; i>>=1) {
-        s += (u & i) ? "1" : "0";
-    }
-    return s;
-}
-
-// static uint256 foo = uint256S("163ee79aa165df2dbd552d41e89abb266cf76b0763504e6ef582cb6df2e0befc");
 
 seq_t mff_aj::touched_txid(const uint256& txid, bool count) {
     // static int calls = 0;calls++;
@@ -403,82 +325,6 @@ int64_t mff_aj::get_tx_input_amount(tiny::tx& tx)
     return amount;
 }
 
-/////////
-
-void mff_aj::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause) {
-    mplinfo("TX_INVALID %s %llu %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_invalid_state_str(state));
-    auto e = std::make_shared<entry>(this);
-    e->cmd = CMD::TX_INVALID;
-    e->known = known;
-    if (known) {
-        t->location = tx::location_invalid;
-        t->invalid_reason = (tx::invalid_reason_enum)state;
-        // tx_freeze(seq);
-    }
-    e->invalid_reason = (tx::invalid_reason_enum)state;
-    e->invalid_cause_known = cause != nullptr;
-    if (cause) e->invalid_replacement = *cause;
-    e->invalid_tinytx = &tref;
-    push_entry(e);
-    // last_entry.invalid_txhex = 
-}
-
-bool debug_deps = false;
-#define DEBUG_DEPS(args...) if (debug_deps) printf(args)
-
-void mff_aj::check_deps(tiny::tx* cause, const uint256& txid, const uint32_t* index_or_all) {
-    // if (seqs.count(txid)) {
-    //     seq_t seq = seqs[txid];
-    //     DEBUG_DEPS("- %llu deps\n", seq);
-    //     if (deps.count(seq)) {
-    //         // potential double spend or RBF
-    //         for (const auto& other : deps[seq]) {
-    //             DEBUG_DEPS("--- %s with %llu inputs\n", other->id.ToString().c_str(), other->inputs);
-    //             for (uint64_t j = 0; j < other->inputs; ++j) {
-    //                 const auto& prevout2 = other->vin[j];
-    //                 const uint256& prevout2hash = prevout2.is_known() ? txs[prevout2.get_seq()]->id : prevout2.get_txid();
-    //                 DEBUG_DEPS("--- comparing %s with %s && (!%d || %llu == %u)\n", prevout2hash.ToString().c_str(), txid.ToString().c_str(), !!index_or_all, prevout2.n, index_or_all ? *index_or_all : 0);
-    //                 if (prevout2hash == txid && (!index_or_all || prevout2.n == *index_or_all)) {
-    //                     // double spent or RBF bumped; we are going with
-    //                     // double spent for now
-    //                     // TODO: detect RBF
-    //                     auto otx = std::make_shared<tiny::tx>();
-    //                     rpc_get_tx(other->id, *otx);
-    //                     backlog_ttxs.push_back(otx);
-    //                     tx_invalid(true /* ? */, seq, other, *otx, tx::invalid_doublespent, cause ? &cause->hash : nullptr);
-    //                     // recursively invalidate txs dependent on other (no matter the index)
-    //                     check_deps(cause, other->id);
-    //                     break;
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-}
-
-void mff_aj::check_deps(tiny::tx& newcomer) {
-    // debug_deps = false;
-    // if (newcomer.hash == uint256S("535a1b4a6eb47a5d22e19c439415bba6b9ae8f200c4806d30886a7d9649ffca2") || newcomer.hash == uint256S("964797a5f19debe525759e126a40baec325d4f17bf3422d580d1b978d25aa096")) {
-    //     debug_deps = true;
-    // }
-    // DEBUG_DEPS("check_deps(%s) w/ %zu inputs\n", newcomer.hash.ToString().c_str(), newcomer.vin.size());
-    // for (uint64_t i = 0; i < newcomer.vin.size(); ++i) {
-    //     const auto& prevout = newcomer.vin[i].prevout;
-    //     DEBUG_DEPS("- #%llu %s:%u (%s)\n", i, prevout.hash.ToString().c_str(), prevout.n, seqs.count(prevout.hash) ? "known" : "unknown");
-    //     check_deps(&newcomer, prevout.hash, &prevout.n);
-    //     // add dependency if known
-    //     if (seqs.count(prevout.hash)) {
-    //         seq_t seq = seqs[prevout.hash];
-    //         deps[seq].push_back(txs[seq]);
-    //     }
-    // }
-}
-
-void mff_aj::push_entry(std::shared_ptr<entry> e) {
-    e->time = read_time;
-    backlog.push_back(e);
-}
-
 std::shared_ptr<tx> mff_aj::register_tx(tiny::tx& tt) {
     auto t = std::make_shared<tx>();
     t->id = tt.hash;
@@ -530,24 +376,7 @@ std::shared_ptr<tx> mff_aj::register_tx(tiny::tx& tt) {
 }
 
 void mff_aj::insert(tiny::tx& tt) {
-    mempool.insert_tx(std::make_shared<tiny::tx>(tt));
-    // // mplinfo("insert %s %s\n", seqs.count(tref.GetHash()) ? "known" : "new", tref.GetHash().ToString().c_str());
-    // auto e = std::make_shared<entry>(this);
-    // if (seqs.count(tt.hash)) {
-    //     // we do: TX_IN
-    //     DSL(seqs[tt.hash], "insert() TX_IN\n");
-    //     e->cmd = CMD::TX_IN;
-    //     e->known = true;
-    //     e->tx = txs[seqs[tt.hash]];
-    // } else {
-    //     // we don't: TX_REC
-    //     auto t = register_tx(tt);
-    //     e->cmd = CMD::TX_REC;
-    //     e->known = false;
-    //     e->tx = t;
-    // }
-    // push_entry(e);
-    // check_deps(tt);
+    mempool->insert_tx(std::make_shared<tiny::tx>(tt));
 }
 
 void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
@@ -555,16 +384,11 @@ void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
     blk->height = height;
     while (active_chain.chain.size() > 0 && height < active_chain.height + 1) {
         mplinfo("unconfirming block #%u\n", active_chain.height);
-        mempool.reorg_block(active_chain.height);
-        // auto e = std::make_shared<entry>(this);
-        // e->cmd = CMD::TX_UNCONF;
-        // e->known = true;
-        // e->unconf_height = active_chain.height;
-        // push_entry(e);
+        mempool->reorg_block(active_chain.height);
         undo_block_at_height(active_chain.height);
     }
     assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
-    mempool.process_block(height, hash, b.vtx);
+    mempool->process_block(height, hash, b.vtx);
     std::vector<uint256>& pending_conf_unknown = blk->unknown;
     std::vector<seq_t>& pending_conf_known = blk->known;
     for (auto& t : b.vtx) {
@@ -572,73 +396,40 @@ void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
         if (known) {
             seq_t seq = seqs[t.hash];
             auto& rt = txs[seq];
-            // if (rt->location == tx::location_discarded || rt->location == tx::location_invalid) {
-            //     // re-check dependencies, as this was actually thrown out
-            //     check_deps(t);
-            // }
             pending_conf_known.push_back(seq);
             rt->location = tx::location_confirmed;
-            // tx_freeze(seq);
         } else {
-            // check deps
-            // check_deps(t);
             pending_conf_unknown.push_back(t.hash);
         }
     }
-    // auto e = std::make_shared<entry>(this);
-    // e->cmd = CMD::TX_CONF;
     blk->is_known = 
-    //e->known =
     blocks.count(hash);
     blk->count_known = pending_conf_known.size();
-    //e->block_in = 
     blocks[hash] = blk;
-    // push_entry(e);
     active_chain.height = height;
     active_chain.chain.push_back(blk);
 }
 
-entry* mff_aj::read_entry() {
-    // if (debug_seq) {
-    //     if (seqs.count(debug_txid) == 0 || seqs[debug_txid] != debug_seq) {
-    //         fprintf(stderr, "*** lost connection to %s (seqs[id] -> %llu)\n", debug_txid.ToString().c_str(), seqs.count(debug_txid) ? seqs[debug_txid] : 0);
-    //         assert(0);
-    //     }
-    // }
-    // if (known_tx_list == nullptr) {
-    //     known_tx_list = fopen("known_tx_list.txt", "w");
-    // }
-    // if (backlog.size()) {
-    //     entry_counter++;
-    //     previous_entry = backlog[0];
-    //     backlog.erase(backlog.begin());
-    //     last_time = previous_entry->time;
-    //     // if (debug_seq) {
-    //     //     if (seqs.count(debug_txid) == 0 || seqs[debug_txid] != debug_seq) {
-    //     //         fprintf(stderr, "*** lost connection to %s (seqs[id] -> %llu)\n", debug_txid.ToString().c_str(), seqs.count(debug_txid) ? seqs[debug_txid] : 0);
-    //     //         assert(0);
-    //     //     }
-    //     // }
-    //     return previous_entry.get();
-    // } else {
-    //     // clean up backlog stuffs
-    //     // TODO: ^^^
-    // }
-    entry* e = (entry*)1;
+int64_t mff_aj::peek_time() {
+    long csr = ftell(in_fp);
+    // <timestamp> <action> <data...>
+    int64_t timestamp;
+    uint32_t fraction;
+    if (fscanf(in_fp, "%lld.%u", &timestamp, &fraction) != 2) {
+        return 0;
+    }
+    fseek(in_fp, csr, SEEK_SET);
+    return timestamp;
+}
 
+bool mff_aj::read_entry() {
     // <timestamp> <action> <data...>
     int64_t timestamp;
     uint32_t fraction;
     char action[64];
     if (fscanf(in_fp, "%lld.%u %s ", &timestamp, &fraction, action) != 3) {
-        return nullptr;
+        return false;
     }
-    // bool old_d = debugging;
-    // debugging = timestamp == debug_time;
-    // if (!old_d && debugging) {
-    //     printf("debugging now!\n");
-    // }
-    // DEBLOG("%lld.%u %s ", timestamp, fraction, action);
 
     if (shared_time) *shared_time = timestamp;
     read_time = timestamp;
@@ -649,7 +440,7 @@ entry* mff_aj::read_entry() {
         if (!fgets(bptr, rem, in_fp)) {
             if (ferror(in_fp)) {
                 fprintf(stderr, "\nerror reading from input file\n");
-                return nullptr;
+                return false;
             }
             break;
         }
@@ -657,7 +448,7 @@ entry* mff_aj::read_entry() {
         size_t rbytes = strlen(bptr);
         if (rbytes == 0) {
             fprintf(stderr, "\nunable to read from input file\n");
-            return nullptr;
+            return false;
         }
         bptr += rbytes;
         if (bptr[-1] == '\n') {
@@ -677,14 +468,6 @@ entry* mff_aj::read_entry() {
     // remove newline
     if (bptr > buffer && bptr[-1] == '\n') bptr[-1] = 0;
 
-    // // if buffer is 64 bytes, we check it against debug txid
-    // if (strlen(buffer) == 64) {
-    //     uint256 x = uint256S(buffer);
-    //     if (x == debug_txid) {
-    //         printf("*** DEBUG TXID IN %lld.%u %s\n", timestamp, fraction, action);
-    //     }
-    // }
-
     // hashtx <txid>
     // rawtx <tx hex>
     // hashblock <block id>
@@ -695,49 +478,17 @@ entry* mff_aj::read_entry() {
         // so we loop back and fetch the next entry
         uint256 old = hashtx;
         hashtx = uint256S(buffer);
-        // if (read_hashtx) {
-        //     fprintf(stderr, "\nwarning: read_hashtx is true @ hashtx (%s -> %s)\n", old.ToString().c_str(), hashtx.ToString().c_str());
-        // }
         read_hashtx = true;
-        // fprintf(known_tx_list, "%s (hash only)\n", hashtx.ToString().c_str());
-        // fflush(known_tx_list);
-        // if (debug_seq) {
-        //     if (seqs.count(debug_txid) == 0 || seqs[debug_txid] != debug_seq) {
-        //         fprintf(stderr, "*** lost connection to %s (seqs[id] -> %llu)\n", debug_txid.ToString().c_str(), seqs.count(debug_txid) ? seqs[debug_txid] : 0);
-        //         assert(0);
-        //     }
-        // }
-        return e;// read_entry();
+        return true;// read_entry();
     }
 
     if (!strcmp(action, "rawtx")) {
-        // if (!read_hashtx) {
-        //     fprintf(stderr, "\nwarning: read_hashtx is false @ rawtx\n");
-        // }
         read_hashtx = false;
         tiny::tx tx;
         deserialize_hex_string(buffer, tx);
-        // fprintf(known_tx_list, "%s (full)\n", tx.hash.ToString().c_str());
-        // fflush(known_tx_list);
-        // if (tx.hash != hashtx) {
-        //     fprintf(stderr, "\nwarning: tx.hash != hashtx:\n\t%s\n!=\t%s\n", tx.hash.ToString().c_str(), hashtx.ToString().c_str());
-        //     // assert(0);
-        // }
         insert(tx);
-        // DEBLOG("deserialized tx %s with seq=%llu\n", tx.hash.ToString().c_str(), seqs[tx.hash]);
-        // if (debugging && tx.hash == debug_txid) debug_seq = seqs[tx.hash];
-        // if (debug_seq) {
-        //     if (seqs.count(debug_txid) == 0 || seqs[debug_txid] != debug_seq) {
-        //         fprintf(stderr, "*** lost connection to %s (seqs[id] -> %llu)\n", debug_txid.ToString().c_str(), seqs.count(debug_txid) ? seqs[debug_txid] : 0);
-        //         assert(0);
-        //     }
-        // }
-        return e;// read_entry();
+        return true;// read_entry();
     }
-
-    // if (read_hashtx) {
-    //     fprintf(stderr, "\nwarning: read_hashtx is true @ %s\n", action);
-    // }
 
     if (!strcmp(action, "hashblock")) {
         uint256 blockhash = uint256S(buffer);
@@ -745,166 +496,12 @@ entry* mff_aj::read_entry() {
         uint32_t height;
         rpc_get_block(blockhash, blk, height);
         confirm(height, blockhash, blk);
-        // if (debug_seq) {
-        //     if (seqs.count(debug_txid) == 0 || seqs[debug_txid] != debug_seq) {
-        //         fprintf(stderr, "*** lost connection to %s (seqs[id] -> %llu)\n", debug_txid.ToString().c_str(), seqs.count(debug_txid) ? seqs[debug_txid] : 0);
-        //         assert(0);
-        //     }
-        // }
-        return e;//read_entry();
+        return true;//read_entry();
     }
 
     fprintf(stderr, "\nunknown command %s\n", action);
     assert(0);
 }
-
-// void mff_aj::write_entry(entry* e) {
-//     uint8_t u8;
-//     CMD cmd = e->cmd;
-//     bool known, timerel;
-//     known = e->known;
-//     u8 = prot(cmd, known);
-//     in << u8;
-// 
-//     switch (cmd) {
-//         case CMD::TIME_SET:
-//             // time updated after switch()
-//             mplinfo("TIME_SET()\n");
-//             break;
-// 
-//         case TX_REC: {
-//             mplinfo("TX_REC(): "); fflush(stdout);
-//             auto t = import_tx(e->sds, e->tx);
-//             DSL(t->seq, "TX_REC\n");
-//             if (txs.count(t->seq)) {
-//                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
-//             }
-//             txs[t->seq] = t;
-//             seqs[t->id] = t->seq;
-//             mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
-//             t->location = tx::location_in_mempool;
-//             serializer.serialize_tx(in, *t);
-//             break;
-//         }
-// 
-//         case TX_IN: {
-//             mplinfo("TX_IN(): "); fflush(stdout);
-//             auto t = import_tx(e->sds, e->tx);
-//             uint64_t seq = seqs[t->id];
-//             assert(seq && txs.count(seq));
-//             DSL(seq, "TX_IN\n");
-//             if (txs.count(seq)) {
-//                 txs[seq]->location = tx::location_in_mempool;
-//             }
-//             seq_write(seq);
-//             mplinfo_("seq=%llu\n", seq);
-//             break;
-//         }
-// 
-//         case TX_CONF: {
-//             // l1("TX_CONF(%s): ", known ? "known" : "unknown");
-//             auto b = e->block_in;
-//             if (known) {
-//                 // we know the block; just get the header info and find it, then apply
-//                 b->is_known = true;
-//                 // conversion not needed
-//                 serializer.serialize_block(in, *b);
-//                 assert(blocks.count(b->hash));
-//                 // l1("block %u=%s\n", b.height, b.hash.ToString().c_str());
-//                 apply_block(blocks[b->hash]);
-//             } else {
-//                 b->is_known = false;
-//                 b = import_block(e->sds, b);
-//                 serializer.serialize_block(in, *b);
-//                 blocks[b->hash] = b;
-//                 // l1("block %u=%s\n", b->height, b->hash.ToString().c_str());
-//                 apply_block(b);
-//             }
-//             break;
-//         }
-// 
-//         case TX_OUT: {
-//             assert(known);
-//             mplinfo("TX_OUT(): "); fflush(stdout);
-//             seq_t seq = seqs[e->tx->id];
-//             uint8_t reason = e->out_reason;
-//             DSL(seq, "TX_OUT\n");
-//             assert(txs.count(seq));
-//             auto t = txs[seq];
-//             t->location = tx::location_discarded;
-//             t->out_reason = (tx::out_reason_enum)reason;
-//             seq_write(seq);
-//             in << reason;
-//             mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
-//             break;
-//         }
-// 
-//         case TX_INVALID: {
-//             mplinfo("TX_INVALID(): "); fflush(stdout);
-//             // out.debugme(true);
-//             replacement_seq = 0;
-//             replacement_txid.SetNull();
-// 
-//             auto t_invalid = import_tx(e->sds, e->tx);
-//             // printf("t_invalid = %s\n", t_invalid->id.ToString().c_str());
-//             seq_t tx_invalid = seqs[t_invalid->id];
-//             assert(!tx_invalid || txs[seqs[t_invalid->id]]->id == t_invalid->id);
-//             uint8_t state = e->invalid_reason;
-//             bool cause_known = e->invalid_cause_known;
-//             seq_t tx_cause(0);
-//             const uint256& invalid_replacement = e->invalid_replacement;
-//             const tiny::tx* invalid_tinytx = e->invalid_tinytx;
-// 
-//             write_txref(tx_invalid, t_invalid->id);
-// 
-//             uint8_t v = state | (cause_known ? CMD::TX_KNOWN_BIT : 0);
-//             in << v;
-//             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
-//                 assert(!invalid_replacement.IsNull());
-//                 seq_t causeseq = seqs.count(invalid_replacement) ? seqs[invalid_replacement] : 0;
-//                 write_txref(causeseq, invalid_replacement);
-//             }
-// 
-//             in << *invalid_tinytx;
-//             // printf("invalid tinytx = %s\n", invalid_tinytx->hash.ToString().c_str());
-// 
-//             if (tx_invalid) {
-//                 auto t = txs[tx_invalid];
-//                 t->location = tx::location_invalid;
-//                 t->invalid_reason = (tx::invalid_reason_enum)state;
-//                 if (txs.count(tx_invalid)) {
-//                     if (invalid_tinytx->hash != txs[tx_invalid]->id) {
-//                         printf("tx hash failure:\n\t%s\nvs\t%s\n", invalid_tinytx->hash.ToString().c_str(), txs[tx_invalid]->id.ToString().c_str());
-//                         printf("tx hex = %s\n", HexStr(*e->invalid_txhex).c_str());
-//                     }
-//                     assert(invalid_tinytx->hash == txs[tx_invalid]->id);
-//                 }
-//             }
-//             mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
-//             mplinfo_("----- tx invalid deserialization ends -----\n");
-//             // out.debugme(false);
-//             break;
-//         }
-// 
-//         case TX_UNCONF: {
-//             mplinfo("TX_UNCONF(): "); fflush(stdout);
-//             uint32_t height = e->unconf_height;
-//             in << height;
-//             if (known) {
-//                 mplinfo_("known, height=%u\n", height);
-//                 undo_block_at_height(height);
-//             } else {
-//                 assert(!"not implemented");
-//             }
-//             break;
-//         }
-// 
-//         default:
-//             mplerr("u8 = %u, cmd = %u\n", u8, cmd);
-//             assert(!"unknown command"); // todo: exceptionize
-//     }
-//     write_set_time(u8, e->time);
-// }
 
 inline void mff_aj::sync() {
     int64_t now = GetTime();
@@ -914,4 +511,5 @@ inline void mff_aj::sync() {
         lastflush = now;
     }
 }
+
 } // namespace mff

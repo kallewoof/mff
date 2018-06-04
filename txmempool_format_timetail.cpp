@@ -5,25 +5,23 @@
 #include <streams.h>
 #include <tinytx.h>
 
-#include <txmempool_format.h>
+#include <txmempool_format_timetail.h>
 
 // #define DEBUG_SEQ 14937
 #define DSL(s, fmt...) // if (s == DEBUG_SEQ) { printf("[SEQ] " fmt); }
 // #define l(args...) if (active_chain.height == 521703) { printf(args); }
 // #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
-uint64_t skipped_recs = 0;
-
 namespace mff {
 
-rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
-size_t initialized_rseq_ctrs = 0;
+rseq_tt_container* g_rseq_tt_ctr[MAX_RSEQ_TT_CONTAINERS];
+size_t initialized_rseq_tt_ctrs = 0;
 
-inline rseq_container* get_rseq_ctr(size_t idx) {
-    while (idx >= initialized_rseq_ctrs) {
-        g_rseq_ctr[initialized_rseq_ctrs++] = nullptr;
+inline rseq_tt_container* get_rseq_tt_ctr(size_t idx) {
+    while (idx >= initialized_rseq_tt_ctrs) {
+        g_rseq_tt_ctr[initialized_rseq_tt_ctrs++] = nullptr;
     }
-    return g_rseq_ctr[idx];
+    return g_rseq_tt_ctr[idx];
 }
 
 template<typename T>
@@ -114,9 +112,9 @@ inline FILE* setup_file(const char* path, bool readonly) {
 }
 
 template<int I>
-mff_rseq<I>::mff_rseq(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
-    assert(get_rseq_ctr(I) == nullptr);
-    g_rseq_ctr[I] = this;
+mff_rseq_tt<I>::mff_rseq_tt(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
+    assert(get_rseq_tt_ctr(I) == nullptr);
+    g_rseq_tt_ctr[I] = this;
     entry_counter = 0;
     last_seq = 0;
     nextseq = 1;
@@ -126,12 +124,12 @@ mff_rseq<I>::mff_rseq(const std::string path, bool readonly) : in_fp(setup_file(
 }
 
 template<int I>
-mff_rseq<I>::~mff_rseq() {
-    g_rseq_ctr[I] = nullptr;
+mff_rseq_tt<I>::~mff_rseq_tt() {
+    g_rseq_tt_ctr[I] = nullptr;
 }
 
 template<int I>
-void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
+void mff_rseq_tt<I>::apply_block(std::shared_ptr<block> b) {
     // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
@@ -166,7 +164,7 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
 }
 
 template<int I>
-void mff_rseq<I>::undo_block_at_height(uint32_t height) {
+void mff_rseq_tt<I>::undo_block_at_height(uint32_t height) {
     mplinfo("undo block %u\n", height);
     // we need to unmark confirmed transactions
     assert(height == active_chain.height);
@@ -192,7 +190,7 @@ inline std::string bits(uint8_t u) {
 // static uint256 foo = uint256S("163ee79aa165df2dbd552d41e89abb266cf76b0763504e6ef582cb6df2e0befc");
 
 template<int I>
-seq_t mff_rseq<I>::touched_txid(const uint256& txid, bool count) {
+seq_t mff_rseq_tt<I>::touched_txid(const uint256& txid, bool count) {
     // static int calls = 0;calls++;
     if (count) {
         std::set<uint256> counted;
@@ -234,35 +232,22 @@ seq_t mff_rseq<I>::touched_txid(const uint256& txid, bool count) {
 }
 
 template<int I>
-uint256 mff_rseq<I>::get_replacement_txid() const {
+uint256 mff_rseq_tt<I>::get_replacement_txid() const {
     return replacement_seq && txs.count(replacement_seq) ? txs.at(replacement_seq)->id : replacement_txid;
 }
 
 template<int I>
-uint256 mff_rseq<I>::get_invalidated_txid() const {
+uint256 mff_rseq_tt<I>::get_invalidated_txid() const {
     return invalidated_seq && txs.count(invalidated_seq) ? txs.at(invalidated_seq)->id : invalidated_txid;
 }
 
 template<int I>
-int64_t mff_rseq<I>::peek_time() {
-    long csr = ftell(in_fp);
-    uint8_t u8;
-    bool timerel;
-    CMD cmd;
-    try {
-        in >> u8;
-    } catch (std::ios_base::failure& f) {
-        return 0;
-    }
-    timerel = (u8 >> 7) & 1;
-    int64_t t;
-    read_time(t);
-    fseek(in_fp, csr, SEEK_SET);
-    return t;
+int64_t mff_rseq_tt<I>::peek_time() {
+    assert(!"not implemented -- convert into MFF non-tail-time format before merging");
 }
 
 template<int I>
-bool mff_rseq<I>::read_entry() {
+bool mff_rseq_tt<I>::read_entry() {
     entry_counter++;
     uint8_t u8;
     CMD cmd;
@@ -277,7 +262,6 @@ bool mff_rseq<I>::read_entry() {
     known = (u8 >> 6) & 1;
     timerel = (u8 >> 7) & 1;
     last_seqs.clear();
-    read_time(last_time);
     switch (cmd) {
         case CMD::TIME_SET:
             // time updated after switch()
@@ -441,7 +425,7 @@ bool mff_rseq<I>::read_entry() {
             mplerr("u8 = %u, cmd = %u\n", u8, cmd);
             assert(!"unknown command"); // todo: exceptionize
     }
-    // read_time(last_time);
+    read_time(last_time);
     // showinfo = false;
     // } catch (std::ios_base::failure& f) {
     //     return nullptr;
@@ -450,13 +434,13 @@ bool mff_rseq<I>::read_entry() {
 }
 
 // template<int I>
-// seq_t mff_rseq<I>::claim_seq(const uint256& txid) {
+// seq_t mff_rseq_tt<I>::claim_seq(const uint256& txid) {
 //     if (seqs.count(txid)) return seqs[txid];
 //     return nextseq++;
 // }
 
 // template<int I>
-// bool mff_rseq<I>::test_entry(entry* e) {
+// bool mff_rseq_tt<I>::test_entry(entry* e) {
 //     switch (e->cmd) {
 //         case CMD::TIME_SET:
 //             return false;
@@ -485,7 +469,7 @@ bool mff_rseq<I>::read_entry() {
 // }
 
 // template<int I>
-// void mff_rseq<I>::write_entry(entry* e) {
+// void mff_rseq_tt<I>::write_entry(entry* e) {
 //     if (!test_entry(e)) {
 //         return;
 //     }
@@ -637,22 +621,22 @@ bool mff_rseq<I>::read_entry() {
 // }
 
 template<int I>
-inline seq_t mff_rseq<I>::seq_read() {
-    int64_t rseq;
-    in >> CVarInt<VarIntMode::SIGNED, int64_t>{rseq};
-    last_seq += rseq;
+inline seq_t mff_rseq_tt<I>::seq_read() {
+    int64_t rseq_tt;
+    in >> CVarInt<VarIntMode::SIGNED, int64_t>{rseq_tt};
+    last_seq += rseq_tt;
     return last_seq;
 }
 
 template<int I>
-inline void mff_rseq<I>::seq_write(seq_t seq) {
-    int64_t rseq = (seq > last_seq ? seq - last_seq : -int64_t(last_seq - seq));
-    in << CVarInt<VarIntMode::SIGNED, int64_t>(rseq);
+inline void mff_rseq_tt<I>::seq_write(seq_t seq) {
+    int64_t rseq_tt = (seq > last_seq ? seq - last_seq : -int64_t(last_seq - seq));
+    in << CVarInt<VarIntMode::SIGNED, int64_t>(rseq_tt);
     last_seq = seq;
 }
 
 template<int I>
-inline void mff_rseq<I>::sync() {
+inline void mff_rseq_tt<I>::sync() {
     int64_t now = GetTime();
     if (lastflush + 10 < now) {
         // printf("*\b"); fflush(stdout);
@@ -662,7 +646,7 @@ inline void mff_rseq<I>::sync() {
 }
 
 template<int I>
-const std::shared_ptr<tx> mff_rseq<I>::register_entry(const tiny::mempool_entry& entry) {
+const std::shared_ptr<tx> mff_rseq_tt<I>::register_entry(const tiny::mempool_entry& entry) {
     const tiny::tx& tref = *entry.x;
     auto t = std::make_shared<tx>();
     t->id = tref.hash;
@@ -689,7 +673,7 @@ const std::shared_ptr<tx> mff_rseq<I>::register_entry(const tiny::mempool_entry&
 }
 
 template<int I>
-void mff_rseq<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
+void mff_rseq_tt<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
     uint8_t b;
     // do we know this transaction?
     const auto& tref = entry->x;
@@ -698,20 +682,19 @@ void mff_rseq<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
         // we do: TX_IN
         b = prot(CMD::TX_IN, true);
         in << b;
-        write_time(b);
         seq_write(seqs[tref->hash]);
     } else {
         // we don't: TX_REC
         auto t = register_entry(*entry);
         b = prot(CMD::TX_REC, false);
         in << b;
-        write_time(b);
         serializer.serialize_tx(in, *t);
     }
+    write_time(b);
 }
 
 template<int I>
-inline void mff_rseq<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t reason) {
+inline void mff_rseq_tt<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t reason) {
     mplinfo("TX_OUT %s %llu %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_out_reason_str(reason));
     uint8_t b = prot(CMD::TX_OUT, known);
     if (known) {
@@ -720,13 +703,13 @@ inline void mff_rseq<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, co
         tx_chill(seq);
     }
     in << b;
-    write_time(b);
     write_txref(seq, tref.hash);
     in << reason;
+    write_time(b);
 }
 
 template<int I>
-inline void mff_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause) {
+inline void mff_rseq_tt<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause) {
     // out.debugme(true);
     mplinfo("TX_INVALID %s %llu %s [%s]\n", known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(state));
     uint8_t b = prot(CMD::TX_INVALID, known);
@@ -736,7 +719,6 @@ inline void mff_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t
         tx_freeze(seq);
     }
     in << b;
-    write_time(b);
     write_txref(seq, tref.hash);
     uint8_t v = state | (cause && seqs.count(*cause) ? CMD::TX_KNOWN_BIT : 0);
     in << v;
@@ -746,11 +728,12 @@ inline void mff_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t
         write_txref(causeseq, *cause);
     }
     in << tref;
+    write_time(b);
     // out.debugme(false);
 }
 
 template<int I>
-void mff_rseq<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause_tx) {
+void mff_rseq_tt<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause_tx) {
     uint256* cause = cause_tx ? &cause_tx->hash : nullptr;
     // do we know this transaction?
     const auto& tref = *entry->x;
@@ -795,16 +778,15 @@ void mff_rseq<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry
 }
 
 template<int I>
-void mff_rseq<I>::push_block(int height, uint256 hash) {
+void mff_rseq_tt<I>::push_block(int height, uint256 hash) {
     mplinfo("confirm block #%u (%s)\n", height, hash.ToString().c_str());
     uint8_t b;
     std::shared_ptr<block> blk;
     while (active_chain.chain.size() > 0 && height < active_chain.height + 1) {
         mplinfo("unconfirming block #%u\n", active_chain.height);
         b = prot(CMD::TX_UNCONF, true);
-        in << b;
+        in << b << active_chain.height;
         write_time(b);
-        in << active_chain.height;
         undo_block_at_height(active_chain.height);
     }
     assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
@@ -827,20 +809,20 @@ void mff_rseq<I>::push_block(int height, uint256 hash) {
     // active_chain.height = height;
     // active_chain.chain.push_back(blk);
     in << b;
-    write_time(b);
     serializer.serialize_block(in, *blk);
     pending_conf_known.clear();
     pending_conf_unknown.clear();
+    write_time(b);
     // update_queues();
 }
 
 template<int I>
-void mff_rseq<I>::pop_block(int height) {
+void mff_rseq_tt<I>::pop_block(int height) {
     undo_block_at_height(height);
 }
 
 template<int I>
-inline void mff_rseq<I>::tx_freeze(seq_t seq) {
+inline void mff_rseq_tt<I>::tx_freeze(seq_t seq) {
     assert(seq > 0);
     // make seq eventually available
     if (txs.count(seq)) {
@@ -853,7 +835,7 @@ inline void mff_rseq<I>::tx_freeze(seq_t seq) {
 }
 
 template<int I>
-inline void mff_rseq<I>::tx_chill(seq_t seq) {
+inline void mff_rseq_tt<I>::tx_chill(seq_t seq) {
     assert(seq > 0);
     // make seq eventually available (sometime in the future)
     if (txs.count(seq)) {
@@ -866,7 +848,7 @@ inline void mff_rseq<I>::tx_chill(seq_t seq) {
 }
 
 template<int I>
-inline void mff_rseq<I>::tx_thaw(seq_t seq) {
+inline void mff_rseq_tt<I>::tx_thaw(seq_t seq) {
     assert(seq > 0);
     if (txs.count(seq) && txs[seq]->cool_height) {
         DSL(seq, "tx_thaw @ %u\n", txs[seq]->cool_height);
@@ -877,7 +859,7 @@ inline void mff_rseq<I>::tx_thaw(seq_t seq) {
 }
 
 template<int I>
-inline void mff_rseq<I>::update_queues() {
+inline void mff_rseq_tt<I>::update_queues() {
     uint32_t height = active_chain.height;
 
     // put seqs into pool
@@ -920,44 +902,44 @@ inline void mff_rseq<I>::update_queues() {
     }
 }
 
-template void mff_rseq<0>::apply_block(std::shared_ptr<block> b);
-template void mff_rseq<0>::undo_block_at_height(uint32_t height);
-template seq_t mff_rseq<0>::touched_txid(const uint256& txid, bool count);
-template mff_rseq<0>::mff_rseq(const std::string path, bool readonly);
-template mff_rseq<0>::~mff_rseq();
-template bool mff_rseq<0>::read_entry();
-// template void mff_rseq<0>::write_entry(entry* e);
-// template seq_t mff_rseq<0>::claim_seq(const uint256& txid);
-template uint256 mff_rseq<0>::get_replacement_txid() const;
-template uint256 mff_rseq<0>::get_invalidated_txid() const;
-template seq_t mff_rseq<0>::seq_read();
-template void mff_rseq<0>::seq_write(seq_t seq);
-// template bool mff_rseq<0>::test_entry(entry* e);
-template const std::shared_ptr<tx> mff_rseq<0>::register_entry(const tiny::mempool_entry& entry);
-template void mff_rseq<0>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
-template void mff_rseq<0>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
-template void mff_rseq<0>::push_block(int height, uint256 hash);
-template void mff_rseq<0>::pop_block(int height);
-template int64_t mff_rseq<0>::peek_time();
+template void mff_rseq_tt<0>::apply_block(std::shared_ptr<block> b);
+template void mff_rseq_tt<0>::undo_block_at_height(uint32_t height);
+template seq_t mff_rseq_tt<0>::touched_txid(const uint256& txid, bool count);
+template mff_rseq_tt<0>::mff_rseq_tt(const std::string path, bool readonly);
+template mff_rseq_tt<0>::~mff_rseq_tt();
+template bool mff_rseq_tt<0>::read_entry();
+// template void mff_rseq_tt<0>::write_entry(entry* e);
+// template seq_t mff_rseq_tt<0>::claim_seq(const uint256& txid);
+template uint256 mff_rseq_tt<0>::get_replacement_txid() const;
+template uint256 mff_rseq_tt<0>::get_invalidated_txid() const;
+template seq_t mff_rseq_tt<0>::seq_read();
+template void mff_rseq_tt<0>::seq_write(seq_t seq);
+// template bool mff_rseq_tt<0>::test_entry(entry* e);
+template const std::shared_ptr<tx> mff_rseq_tt<0>::register_entry(const tiny::mempool_entry& entry);
+template void mff_rseq_tt<0>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
+template void mff_rseq_tt<0>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
+template void mff_rseq_tt<0>::push_block(int height, uint256 hash);
+template void mff_rseq_tt<0>::pop_block(int height);
+template int64_t mff_rseq_tt<0>::peek_time();
 
-template void mff_rseq<1>::apply_block(std::shared_ptr<block> b);
-template void mff_rseq<1>::undo_block_at_height(uint32_t height);
-template seq_t mff_rseq<1>::touched_txid(const uint256& txid, bool count);
-template mff_rseq<1>::mff_rseq(const std::string path, bool readonly);
-template mff_rseq<1>::~mff_rseq();
-template bool mff_rseq<1>::read_entry();
-// template void mff_rseq<1>::write_entry(entry* e);
-// template seq_t mff_rseq<1>::claim_seq(const uint256& txid);
-template uint256 mff_rseq<1>::get_replacement_txid() const;
-template uint256 mff_rseq<1>::get_invalidated_txid() const;
-template seq_t mff_rseq<1>::seq_read();
-template void mff_rseq<1>::seq_write(seq_t seq);
-// template bool mff_rseq<1>::test_entry(entry* e);
-template const std::shared_ptr<tx> mff_rseq<1>::register_entry(const tiny::mempool_entry& entry);
-template void mff_rseq<1>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
-template void mff_rseq<1>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
-template void mff_rseq<1>::push_block(int height, uint256 hash);
-template void mff_rseq<1>::pop_block(int height);
-template int64_t mff_rseq<1>::peek_time();
+template void mff_rseq_tt<1>::apply_block(std::shared_ptr<block> b);
+template void mff_rseq_tt<1>::undo_block_at_height(uint32_t height);
+template seq_t mff_rseq_tt<1>::touched_txid(const uint256& txid, bool count);
+template mff_rseq_tt<1>::mff_rseq_tt(const std::string path, bool readonly);
+template mff_rseq_tt<1>::~mff_rseq_tt();
+template bool mff_rseq_tt<1>::read_entry();
+// template void mff_rseq_tt<1>::write_entry(entry* e);
+// template seq_t mff_rseq_tt<1>::claim_seq(const uint256& txid);
+template uint256 mff_rseq_tt<1>::get_replacement_txid() const;
+template uint256 mff_rseq_tt<1>::get_invalidated_txid() const;
+template seq_t mff_rseq_tt<1>::seq_read();
+template void mff_rseq_tt<1>::seq_write(seq_t seq);
+// template bool mff_rseq_tt<1>::test_entry(entry* e);
+template const std::shared_ptr<tx> mff_rseq_tt<1>::register_entry(const tiny::mempool_entry& entry);
+template void mff_rseq_tt<1>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
+template void mff_rseq_tt<1>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
+template void mff_rseq_tt<1>::push_block(int height, uint256 hash);
+template void mff_rseq_tt<1>::pop_block(int height);
+template int64_t mff_rseq_tt<1>::peek_time();
 
 } // namespace mff
