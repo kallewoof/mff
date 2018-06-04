@@ -894,7 +894,7 @@ inline void mff_rseq<I>::tx_thaw(seq_t seq) {
 template<int I>
 inline void mff_rseq<I>::update_queues() {
     uint32_t height = active_chain.height;
-
+    printf("\n");
     // put seqs into pool
     #define FROZEN_PURGE_HEIGHT     (height - 100)
     #define CHILLED_PURGE_HEIGHT    (height - 200)
@@ -926,7 +926,6 @@ inline void mff_rseq<I>::update_queues() {
         }
         chilled_queue.erase(CHILLED_PURGE_HEIGHT);
     }
-    printf("\n");
     for (uint32_t h = CHILLED_PURGE_HEIGHT; h <= height; ++h) {
         size_t f = frozen_queue.count(h) ? frozen_queue[h].size() : 0;
         size_t c = chilled_queue.count(h) ? chilled_queue[h].size() : 0;
@@ -934,6 +933,7 @@ inline void mff_rseq<I>::update_queues() {
             printf("%-6u : %4zu %4zu\n", h, f, c);
         }
     }
+    printf("%zu/%llu (%.2f%%) known transactions in memory\n", txs.size(), nextseq, 100.0 * txs.size() / nextseq);
 }
 
 template void mff_rseq<0>::apply_block(std::shared_ptr<block> b);
