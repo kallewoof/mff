@@ -24,6 +24,8 @@ enum CMD: uint8_t {
     TX_OUT     = 0x04,
     TX_INVALID = 0x05,
     TX_UNCONF  = 0x06,
+    CHECKPOINT = 0x07,
+    GAP        = 0x08,
 
     TX_KNOWN_BIT = 0x40,    // 0b0100 0000
     TIME_REL_BIT = 0x80,    // 0b1000 0000
@@ -283,6 +285,9 @@ public:
 
 class mff: public seqdict_server, public tiny::mempool_callback {
 public:
+    std::map<uint8_t,uint64_t> space_usage;
+    inline void used(uint8_t cmd, uint64_t amt) { space_usage[cmd] += amt; }
+
     listener_callback* listener = nullptr;
     chain_delegate* chain_del = nullptr;
     virtual void link_source(mff* src) {}

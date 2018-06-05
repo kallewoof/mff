@@ -294,6 +294,7 @@ bool mff_rseq<I>::read_entry() {
     entry_counter++;
     uint8_t u8;
     CMD cmd;
+    use_start = ftell(in_fp);
     bool known, timerel;
     try {
         read_cmd_time(u8, cmd, known, timerel, last_time);
@@ -481,6 +482,9 @@ bool mff_rseq<I>::read_entry() {
     // } catch (std::ios_base::failure& f) {
     //     return nullptr;
     // }
+    long used_bytes = ftell(in_fp) - use_start;
+    assert(used_bytes > 0);
+    used(cmd, (uint64_t)used_bytes);
     return true;
 }
 
@@ -839,6 +843,10 @@ void mff_rseq<I>::push_block(int height, uint256 hash) {
     }
     if (!(active_chain.chain.size() == 0 || height == active_chain.height + 1)) {
         fprintf(stderr, "*** gap in chain (active_chain.height = %u; pushed block height = %u; missing %u block(s))\n", active_chain.height, height, height - active_chain.height);
+        b = prot(CMD::GAP, false);
+        write_cmd_time(b);
+        uint32_t current_height = height - 1;
+        in << current_height;
     }
     // assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
     if (blocks.count(hash)) {

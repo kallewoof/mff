@@ -153,6 +153,8 @@ private:
     inline void tx_thaw(seq_t seq);
     inline void update_queues();
     inline void update_queues_for_height(uint32_t height);
+
+    long use_start = 0;
 public:
     void link_source(mff* src) override {
         src->chain_del = this;

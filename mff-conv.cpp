@@ -109,8 +109,13 @@ int main(int argc, char* const* argv) {
 
     size_t out_read = 0;
 
+    int64_t c_start_time = 0;
     if (!overwrite_output) {
         printf("seeking to end of output..."); fflush(stdout);
+        if (out->read_entry()) {
+            out_read++;
+            c_start_time = out->last_time;
+        }
         while (out->read_entry()) out_read++;
         printf(" read %zu entries from %s\n", out_read, ca.l[3]);
     }
@@ -126,6 +131,7 @@ int main(int argc, char* const* argv) {
     out->shared_time = &internal_time;
     // in->shared_time = out->shared_time = &internal_time;
     while (c.read_entry()) {
+        if (!c_start_time) c_start_time = c.time;
         if (last_time && !overwrite_output) {
             if (c.time < last_time) {
                 // we cannot allow jumping back in time
@@ -158,9 +164,23 @@ int main(int argc, char* const* argv) {
     }
     out->flush();
     printf("\n");
-    printf("skipped recs = %llu\n", skipped_recs);
     // save mempool, if provided
     if (mempool_file != "") {
         c.nodes[0]->save_mempool(mempool_file);
     }
+    printf("skipped recs = %llu\n", skipped_recs);
+    if (c_start_time) {
+        int64_t end_time = internal_time;
+        int64_t elapsed = end_time - c_start_time;
+        int64_t days = elapsed / 86400;
+        int64_t hours = (elapsed % 86400) / 3600;
+        printf("spans over %lld days, %lld hours\n", days, hours);
+    }
+    uint64_t total = (uint64_t)out->tell();
+    uint64_t counted = total;
+    for (auto& x : out->space_usage) {
+        counted -= x.second;
+        printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
+    }
+    printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
 }
