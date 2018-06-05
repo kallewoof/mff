@@ -33,8 +33,8 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 }
 
 // bool showinfo = true;
-#define mplinfo_(args...) //if (showinfo) { printf(args); }
-#define mplinfo(args...)  //if (showinfo) { printf("[MPL::info] " args); }
+#define mplinfo_(args...) // if (showinfo) { printf(args); }
+#define mplinfo(args...) // if (showinfo) { printf("[MPL::info] " args); }
 #define mplwarn(args...) printf("[MPL::warn] " args)
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
 
@@ -289,6 +289,7 @@ bool mff_rseq_tt<I>::read_entry() {
             }
             // mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
             t->location = tx::location_in_mempool;
+            if (listener) listener->tx_rec(this, *t);
             break;
         }
 
@@ -303,6 +304,7 @@ bool mff_rseq_tt<I>::read_entry() {
             }
             mplinfo_("seq=%llu\n", seq);
             last_seqs.push_back(seq);
+            if (listener) listener->tx_in(this, *txs[seq]);
             break;
         }
 
@@ -316,6 +318,7 @@ bool mff_rseq_tt<I>::read_entry() {
                 assert(blocks.count(b.hash));
                 // l1("block %u=%s\n", b.height, b.hash.ToString().c_str());
                 apply_block(blocks[b.hash]);
+                if (listener) listener->block_confirm(this, b);
             } else {
                 auto b = std::make_shared<block>();
                 serializer.deserialize_block(in, *b);
@@ -323,6 +326,7 @@ bool mff_rseq_tt<I>::read_entry() {
                 blocks[b->hash] = b;
                 // l1("block %u=%s\n", b->height, b->hash.ToString().c_str());
                 apply_block(b);
+                if (listener) listener->block_confirm(this, *b);
             }
             break;
         }
@@ -341,6 +345,7 @@ bool mff_rseq_tt<I>::read_entry() {
             t->location = tx::location_discarded;
             t->out_reason = (tx::out_reason_enum)reason;
             mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
+            if (listener) listener->tx_out(this, *txs[seq], t->out_reason);
             break;
         }
 
@@ -393,6 +398,7 @@ bool mff_rseq_tt<I>::read_entry() {
             }
             mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
             mplinfo_("----- tx invalid deserialization ends -----\n");
+            if (listener) listener->tx_invalid(this, *txs[tx_invalid], last_invalidated_txhex, txs[tx_invalid]->invalid_reason, replacement_seq ? &txs[replacement_seq]->id : replacement_txid.IsNull() ? nullptr : &replacement_txid);
             // out.debugme(false);
             break;
         }
@@ -404,7 +410,9 @@ bool mff_rseq_tt<I>::read_entry() {
             if (known) {
                 mplinfo_("known, height=%u\n", height);
                 undo_block_at_height(height);
+                if (listener) listener->block_unconfirm(this, height);
             } else {
+                if (listener) assert(!"not implemented");
                 mplinfo_("unknown, height=%u\n", height);
                 uint64_t count = ReadCompactSize(in);
                 mplinfo("%llu transactions\n", count);
@@ -426,6 +434,7 @@ bool mff_rseq_tt<I>::read_entry() {
             assert(!"unknown command"); // todo: exceptionize
     }
     read_time(last_time);
+    if (shared_time) *shared_time = last_time;
     // showinfo = false;
     // } catch (std::ios_base::failure& f) {
     //     return nullptr;

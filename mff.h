@@ -234,12 +234,12 @@ struct chain_delegate {
     virtual uint32_t expected_block_height() = 0;
 };
 
-// class seqdict_server {
-// public:
-//     seqdict_t seqs;
-//     txs_t txs;
-//     virtual seq_t claim_seq(const uint256& txid) = 0;
-// };
+class seqdict_server {
+public:
+    seqdict_t seqs;
+    txs_t txs;
+    virtual seq_t claim_seq(const uint256& txid) = 0;
+};
 
 // struct entry {
 //     entry(seqdict_server* sds_in) : sds(sds_in) {}
@@ -271,13 +271,22 @@ struct chain_delegate {
         state == ::mff::tx::invalid_unknown ? "???" : "*DATA CORRUPTION*"\
     )
 
-class mff: public tiny::mempool_callback {
+class listener_callback {
 public:
+    virtual void tx_rec(seqdict_server* source, const tx& x) = 0;
+    virtual void tx_in(seqdict_server* source, const tx& x) = 0;
+    virtual void tx_out(seqdict_server* source, const tx& x, tx::out_reason_enum reason) = 0;
+    virtual void tx_invalid(seqdict_server* source, const tx& x, std::vector<uint8_t> txdata, tx::invalid_reason_enum reason, const uint256* cause = nullptr) = 0;
+    virtual void block_confirm(seqdict_server* source, const block& b) = 0;
+    virtual void block_unconfirm(seqdict_server* source, uint32_t height) = 0;
+};
+
+class mff: public seqdict_server, public tiny::mempool_callback {
+public:
+    listener_callback* listener = nullptr;
     chain_delegate* chain_del = nullptr;
     virtual void link_source(mff* src) {}
     int64_t last_time;
-    seqdict_t seqs;
-    txs_t txs;
     uint64_t entry_counter = 0;
     int64_t* shared_time = nullptr;
     std::shared_ptr<tiny::mempool> mempool;
@@ -302,9 +311,9 @@ public:
     // virtual void write_entry(entry* e) {
     //     assert(!"not implemented");
     // }
-    // virtual seq_t claim_seq(const uint256& txid) override {
-    //     assert(!"not implemented");
-    // }
+    virtual seq_t claim_seq(const uint256& txid) override {
+        assert(!"not implemented");
+    }
     uint8_t prot(CMD cmd, bool known) {
         // printf("- %s -\n", cmd_str(cmd).c_str());
         entry_counter++;
@@ -312,40 +321,42 @@ public:
         return cmd | (known ? CMD::TX_KNOWN_BIT : 0) | (time - last_time < 254 ? CMD::TIME_REL_BIT : 0);
     }
 
-    // std::shared_ptr<tx> import_tx(seqdict_server* server, std::shared_ptr<tx> t) {
-    //     // printf("converting %llu=%s == %s: ", server->seqs[t->id], t->id.ToString().c_str(), server->txs[server->seqs[t->id]]->id.ToString().c_str());
-    //     // see if we have this tx
-    //     if (seqs.count(t->id)) {
-    //         // well then
-    //         assert(txs.count(seqs[t->id]));
-    //         // printf("got it already %s\n", txs[seqs[t->id]]->id.ToString().c_str());
-    //         assert(txs[seqs[t->id]]->id == t->id);
-    //         return txs[seqs[t->id]];
-    //     }
-    //     std::shared_ptr<tx> t2 = std::make_shared<tx>(*t);
-    //     t2->seq = claim_seq(t2->id);
-    //     // printf("prevouts ");
-    //     // convert the inputs
-    //     for (outpoint& o : t2->vin) {
-    //         if (o.is_known()) {
-    //             uint256 prevhash = server->txs[o.get_seq()]->id;
-    //             assert(seqs.count(prevhash));
-    //             o.seq = seqs[prevhash];
-    //         }
-    //     }
-    //     // printf("got %llu=%s\n", seqs[t->id], t->id.ToString().c_str());
-    //     return t2;
-    // }
-    // 
-    // std::shared_ptr<block> import_block(seqdict_server* server, std::shared_ptr<block> blk) {
-    //     std::shared_ptr<block> blk2 = std::make_shared<block>(*blk);
-    //     // convert the known vector
-    //     size_t size = blk2->known.size();
-    //     for (size_t i = 0; i < size; ++i) {
-    //         blk2->known[i] = seqs[server->txs[blk2->known[i]]->id];
-    //     }
-    //     return blk2;
-    // }
+    std::shared_ptr<tx> import_tx(seqdict_server* server, const tx& t) {
+        // printf("converting %llu=%s == %s: ", server->seqs[t->id], t->id.ToString().c_str(), server->txs[server->seqs[t->id]]->id.ToString().c_str());
+        // see if we have this tx
+        if (seqs.count(t.id)) {
+            // well then
+            assert(txs.count(seqs[t.id]));
+            // printf("got it already %s\n", txs[seqs[t.id]]->id.ToString().c_str());
+            assert(txs[seqs[t.id]]->id == t.id);
+            return txs[seqs[t.id]];
+        }
+        std::shared_ptr<tx> t2 = std::make_shared<tx>(t);
+        t2->seq = claim_seq(t2->id);
+        // printf("prevouts ");
+        // convert the inputs
+        for (outpoint& o : t2->vin) {
+            if (o.is_known()) {
+                uint256 prevhash = server->txs[o.get_seq()]->id;
+                assert(seqs.count(prevhash));
+                o.seq = seqs[prevhash];
+            }
+        }
+        // printf("got %llu=%s\n", seqs[t.id], t.id.ToString().c_str());
+        seqs[t2->id] = t2->seq;
+        txs[t2->seq] = t2;
+        return t2;
+    }
+    
+    std::shared_ptr<block> import_block(seqdict_server* server, const block& blk) {
+        std::shared_ptr<block> blk2 = std::make_shared<block>(blk);
+        // convert the known vector
+        size_t size = blk2->known.size();
+        for (size_t i = 0; i < size; ++i) {
+            blk2->known[i] = seqs[server->txs[blk2->known[i]]->id];
+        }
+        return blk2;
+    }
 };
 
 class cluster {

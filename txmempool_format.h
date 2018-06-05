@@ -129,7 +129,7 @@ public:
 };
 
 template<int I>
-class mff_rseq: public mff, public rseq_container, public chain_delegate {
+class mff_rseq: public mff, public rseq_container, public chain_delegate, public listener_callback {
 private:
     constexpr static size_t MAX_BLOCKS = 6; // keep this many blocks
     int64_t lastflush;
@@ -143,7 +143,7 @@ private:
     void undo_block_at_height(uint32_t height);
     inline void sync();
 
-    inline void tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t reason);
+    inline void tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const uint256& txid, uint8_t reason);
     inline void tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause);
 
     std::map<uint32_t, std::vector<seq_t>> frozen_queue;  // invalidated or confirmed queue
@@ -156,6 +156,7 @@ private:
 public:
     void link_source(mff* src) override {
         src->chain_del = this;
+        src->listener = this;
     }
     uint32_t expected_block_height() override {
         return active_chain.chain.size() == 0 ? 0 : active_chain.height;
@@ -185,7 +186,7 @@ public:
     bool read_entry() override;
     int64_t peek_time() override;
     // void write_entry(entry* e) override;
-    // seq_t claim_seq(const uint256& txid) override;
+    seq_t claim_seq(const uint256& txid) override;
     long tell() override { return ftell(in_fp); }
     uint256 get_replacement_txid() const;
     uint256 get_invalidated_txid() const;
@@ -201,6 +202,13 @@ public:
     void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) override;
     void push_block(int height, uint256 hash) override;
     void pop_block(int height) override;
+
+    inline void tx_rec(seqdict_server* source, const tx& x) override;
+    inline void tx_in(seqdict_server* source, const tx& x) override;
+    inline void tx_out(seqdict_server* source, const tx& x, tx::out_reason_enum reason) override;
+    inline void tx_invalid(seqdict_server* source, const tx& x, std::vector<uint8_t> txdata, tx::invalid_reason_enum reason, const uint256* cause = nullptr) override;
+    inline void block_confirm(seqdict_server* source, const block& b) override;
+    inline void block_unconfirm(seqdict_server* source, uint32_t height) override;
 };
 
 } // namespace mff

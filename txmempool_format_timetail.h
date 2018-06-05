@@ -25,11 +25,11 @@ extern rseq_tt_container* g_rseq_tt_ctr[MAX_RSEQ_TT_CONTAINERS];
 template <typename Stream, int I>
 class rseq_tt_adapter: public adapter<Stream> {
 public:
-    #define DEBUG_SER(args...) // printf(args)
+    #define DEBUG_SER(args...) //printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
         DEBUG_SER("serializing %s outpoint\n", o.known ? "known" : "unknown");
         DEBUG_SER("o.n=%llu\n", o.n);
-        Serialize(s, VARINT(o.n));
+        Serialize(s, COMPACTSIZE(o.n));
         if (o.known) {
             DEBUG_SER("o.seq = %llu\n", o.seq);
             g_rseq_tt_ctr[I]->seq_write(o.seq);
@@ -40,7 +40,7 @@ public:
     }
     void deserialize_outpoint(Stream& s, outpoint& o) {
         DEBUG_SER("deserializing %s outpoint\n", o.known ? "known" : "unknown");
-        Unserialize(s, VARINT(o.n));
+        Unserialize(s, COMPACTSIZE(o.n));
         DEBUG_SER("o.n=%llu\n", o.n);
         if (o.known) {
             o.seq = g_rseq_tt_ctr[I]->seq_read();
@@ -57,11 +57,11 @@ public:
         DEBUG_SER("- seq: %llu\n", t.seq);
         g_rseq_tt_ctr[I]->seq_write(t.seq);
         DEBUG_SER("- weight: %llu\n", t.weight);
-        Serialize(s, VARINT(t.weight));
+        Serialize(s, COMPACTSIZE(t.weight));
         DEBUG_SER("- fee: %llu\n", t.fee);
-        Serialize(s, VARINT(t.fee));
+        Serialize(s, COMPACTSIZE(t.fee));
         DEBUG_SER("- inputs: %llu\n", t.inputs);
-        Serialize(s, VARINT(t.inputs));
+        Serialize(s, COMPACTSIZE(t.inputs));
         for (uint64_t i = 0; i < t.inputs; ++i) {
             DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
             DEBUG_SER("--- state: %u\n", t.state[i]);
@@ -82,11 +82,11 @@ public:
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
         t.seq = g_rseq_tt_ctr[I]->seq_read();
         DEBUG_SER("- seq: %llu\n", t.seq);
-        Unserialize(s, VARINT(t.weight));
+        Unserialize(s, COMPACTSIZE(t.weight));
         DEBUG_SER("- weight: %llu\n", t.weight);
-        Unserialize(s, VARINT(t.fee));
+        Unserialize(s, COMPACTSIZE(t.fee));
         DEBUG_SER("- fee: %llu\n", t.fee);
-        Unserialize(s, VARINT(t.inputs));
+        Unserialize(s, COMPACTSIZE(t.inputs));
         DEBUG_SER("- inputs: %llu\n", t.inputs);
         t.state.resize(t.inputs);
         t.vin.resize(t.inputs);
@@ -109,7 +109,7 @@ public:
         Serialize(s, b.height);
         Serialize(s, b.hash);
         if (b.is_known) return;
-        Serialize(s, VARINT(b.count_known));
+        Serialize(s, COMPACTSIZE(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
             g_rseq_tt_ctr[I]->seq_write(b.known[i]);
         }
@@ -119,7 +119,7 @@ public:
         Unserialize(s, b.height);
         Unserialize(s, b.hash);
         if (b.is_known) return;
-        Unserialize(s, VARINT(b.count_known));
+        Unserialize(s, COMPACTSIZE(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
             b.known[i] = g_rseq_tt_ctr[I]->seq_read();
