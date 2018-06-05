@@ -93,6 +93,7 @@ int main(int argc, char* const* argv) {
         fprintf(stderr, "invalid format: %s\n", ca.l[ca.l.size()-2]);
         return 1;
     }
+    for (auto& n : c.nodes) out->link_source(n);
 
     // map in mempool to out
     c.mempool->callback = out;

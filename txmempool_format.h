@@ -129,7 +129,7 @@ public:
 };
 
 template<int I>
-class mff_rseq: public mff, public rseq_container {
+class mff_rseq: public mff, public rseq_container, public chain_delegate {
 private:
     constexpr static size_t MAX_BLOCKS = 6; // keep this many blocks
     int64_t lastflush;
@@ -152,7 +152,15 @@ private:
     inline void tx_chill(seq_t seq);
     inline void tx_thaw(seq_t seq);
     inline void update_queues();
+    inline void update_queues_for_height(uint32_t height);
 public:
+    void link_source(mff* src) override {
+        src->chain_del = this;
+    }
+    uint32_t expected_block_height() override {
+        return active_chain.chain.size() == 0 ? 0 : active_chain.height;
+    }
+
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
     chain active_chain;

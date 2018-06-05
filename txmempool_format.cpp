@@ -155,7 +155,7 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
     if (active_chain.chain.size() != 0 && b->height != active_chain.height + 1) {
         fprintf(stderr, "*** new block height = %u; active chain height = %u; chain top block height = %u!\n", b->height, active_chain.height, active_chain.chain.back()->height);
     }
-    assert(active_chain.chain.size() == 0 || b->height == active_chain.height + 1);
+    // assert(active_chain.chain.size() == 0 || b->height == active_chain.height + 1);
     active_chain.height = b->height;
     active_chain.chain.push_back(b);
     assert(blocks[b->hash] == b);
@@ -822,7 +822,10 @@ void mff_rseq<I>::push_block(int height, uint256 hash) {
         in << active_chain.height;
         undo_block_at_height(active_chain.height);
     }
-    assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
+    if (!(active_chain.chain.size() == 0 || height == active_chain.height + 1)) {
+        fprintf(stderr, "*** gap in chain (active_chain.height = %u; pushed block height = %u; missing %u block(s))\n", active_chain.height, height, height - active_chain.height);
+    }
+    // assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
     if (blocks.count(hash)) {
         // known block
         blk = blocks[hash];
@@ -892,16 +895,15 @@ inline void mff_rseq<I>::tx_thaw(seq_t seq) {
 }
 
 template<int I>
-inline void mff_rseq<I>::update_queues() {
-    uint32_t height = active_chain.height;
-    printf("\n");
+inline void mff_rseq<I>::update_queues_for_height(uint32_t height) {
     // put seqs into pool
-    #define FROZEN_PURGE_HEIGHT     (height - 100)
-    #define CHILLED_PURGE_HEIGHT    (height - 200)
-    if (frozen_queue.count(FROZEN_PURGE_HEIGHT)) {
-        if (frozen_queue[FROZEN_PURGE_HEIGHT].size() > 0) {
-            printf("<<<<<<<< %4zu frozen seqs from height=%u\n", frozen_queue[FROZEN_PURGE_HEIGHT].size(), FROZEN_PURGE_HEIGHT);
-            for (seq_t seq : frozen_queue[FROZEN_PURGE_HEIGHT]) {
+    uint32_t frozen_purge_height = height - 100;
+    uint32_t chilled_purge_height = height - 200;
+
+    if (frozen_queue.count(frozen_purge_height)) {
+        if (frozen_queue[frozen_purge_height].size() > 0) {
+            printf("<<<<<<<< %4zu frozen seqs from height=%u\n", frozen_queue[frozen_purge_height].size(), frozen_purge_height);
+            for (seq_t seq : frozen_queue[frozen_purge_height]) {
                 DSL(seq, "update_queues @ %u (frozen)\n", height);
                 // seq_pool.insert(seq);
                 if (txs.count(seq)) {
@@ -910,12 +912,12 @@ inline void mff_rseq<I>::update_queues() {
                 }
             }
         }
-        frozen_queue.erase(FROZEN_PURGE_HEIGHT);
+        frozen_queue.erase(frozen_purge_height);
     }
-    if (chilled_queue.count(CHILLED_PURGE_HEIGHT)) {
-        if (chilled_queue[CHILLED_PURGE_HEIGHT].size() > 0) {
-            printf("<<<<<<<<<<<<< %4zu chilled seqs from height=%u\n", chilled_queue[CHILLED_PURGE_HEIGHT].size(), CHILLED_PURGE_HEIGHT);
-            for (seq_t seq : chilled_queue[CHILLED_PURGE_HEIGHT]) {
+    if (chilled_queue.count(chilled_purge_height)) {
+        if (chilled_queue[chilled_purge_height].size() > 0) {
+            printf("<<<<<<<<<<<<< %4zu chilled seqs from height=%u\n", chilled_queue[chilled_purge_height].size(), chilled_purge_height);
+            for (seq_t seq : chilled_queue[chilled_purge_height]) {
                 DSL(seq, "update_queues @ %u (chilled)\n", height);
                 // seq_pool.insert(seq);
                 if (txs.count(seq)) {
@@ -924,14 +926,27 @@ inline void mff_rseq<I>::update_queues() {
                 }
             }
         }
-        chilled_queue.erase(CHILLED_PURGE_HEIGHT);
+        chilled_queue.erase(chilled_purge_height);
     }
-    for (uint32_t h = FROZEN_PURGE_HEIGHT; h <= height; ++h) {
+}
+
+template<int I>
+inline void mff_rseq<I>::update_queues() {
+    uint32_t height = active_chain.height;
+    uint32_t prev_height = active_chain.chain.size() > 1 ? active_chain.chain[active_chain.chain.size() - 2]->height : height - 1;
+    printf("\n");
+    for (uint32_t biter = prev_height; biter < height; ++biter) {
+        update_queues_for_height(biter + 1);
+    }
+
+    uint32_t frozen_purge_height = height - 100;
+
+    for (uint32_t h = frozen_purge_height; h <= height; ++h) {
         size_t f = frozen_queue.count(h) ? frozen_queue[h].size() : 0;
         size_t c = chilled_queue.count(h) ? chilled_queue[h].size() : 0;
-        if (f + c && (h < FROZEN_PURGE_HEIGHT + 5 || h > height - 5)) {
+        if (f + c && (h < frozen_purge_height + 5 || h > height - 5)) {
             printf("%-6u : %4zu %4zu\n", h, f, c);
-        } else if (h == height - 5) printf("...... . .... ....\n");
+        } else if (h == height - 5) printf(":::::: : :::: ::::\n");
     }
     printf("%zu/%llu (%.2f%%) known transactions in memory\n", txs.size(), nextseq, 100.0 * txs.size() / nextseq);
 }

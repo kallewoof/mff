@@ -169,6 +169,31 @@ inline void deserialize_hex_string(const char* string, T& object) {
     ds >> object;
 }
 
+void mff_aj::rpc_get_block(uint32_t height, tiny::block& b, uint256& blockhex) {
+    std::string dstfinal = "blockdata/" + std::to_string(height) + ".hth";
+    FILE* fp = fopen(dstfinal.c_str(), "rb");
+    if (!fp) {
+        std::string dsttxt = "blockdata/" + std::to_string(height) + ".hth.txt";
+        FILE* fptxt = fopen(dsttxt.c_str(), "r");
+        if (!fptxt) {
+            std::string cmd = aj_rpc_call + " getblockhash " + std::to_string(height) + " > " + dsttxt;
+            fptxt = rpc_fetch(cmd.c_str(), dsttxt.c_str());
+        }
+        char hex[128];
+        fscanf(fptxt, "%s", hex);
+        assert(strlen(hex) == 64);
+        blockhex = uint256S(hex);
+        fclose(fptxt);
+        fp = fopen(dstfinal.c_str(), "wb");
+        CAutoFile af(fp, SER_DISK, 0);
+        af << blockhex;
+        return rpc_get_block(blockhex, b, height);
+    }
+    CAutoFile af(fp, SER_DISK, 0);
+    af >> blockhex;
+    return rpc_get_block(blockhex, b, height);
+}
+
 void mff_aj::rpc_get_block(const uint256& blockhex, tiny::block& b, uint32_t& height) {
     // printf("get block %s\n", blockhex.ToString().c_str());
     std::string dstfinal = "blockdata/" + blockhex.ToString() + ".mffb";
@@ -387,6 +412,9 @@ void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
         mempool->reorg_block(active_chain.height);
         undo_block_at_height(active_chain.height);
     }
+    if (!(active_chain.chain.size() == 0 || height == active_chain.height + 1)) {
+        fprintf(stderr, "*** active chain height = %u, confirming height = %u, expecting %u\n", active_chain.height, height, active_chain.height + 1);
+    }
     assert(active_chain.chain.size() == 0 || height == active_chain.height + 1);
     mempool->process_block(height, hash, b.vtx);
     std::vector<uint256>& pending_conf_unknown = blk->unknown;
@@ -495,6 +523,17 @@ bool mff_aj::read_entry() {
         tiny::block blk;
         uint32_t height;
         rpc_get_block(blockhash, blk, height);
+        // fill in gaps in case this is not the next block
+        uint32_t expected_block_height = active_chain.chain.size() == 0 && chain_del != nullptr ? chain_del->expected_block_height() : active_chain.height + 1;
+        if (expected_block_height && expected_block_height < height) {
+            for (uint32_t i = expected_block_height; i < height; i++) {
+                printf("filling gap (height=%u)\n", i);
+                tiny::block blk2;
+                uint256 blockhash2;
+                rpc_get_block(i, blk2, blockhash2);
+                confirm(i, blockhash2, blk2);
+            }
+        }
         confirm(height, blockhash, blk);
         return true;//read_entry();
     }

@@ -28,6 +28,7 @@ private:
 
     // RPC stuff
     void rpc_get_block(const uint256& blockhex, tiny::block& b, uint32_t& height);
+    void rpc_get_block(uint32_t height, tiny::block& b, uint256& blockhex);
     void rpc_get_tx(const uint256& txhex, tiny::tx& tx, size_t retries = 0);
     tiny::amount rpc_get_tx_input_amount(tiny::tx& tx);
 

@@ -230,6 +230,10 @@ struct chain {
     std::vector<std::shared_ptr<block>> chain;
 };
 
+struct chain_delegate {
+    virtual uint32_t expected_block_height() = 0;
+};
+
 // class seqdict_server {
 // public:
 //     seqdict_t seqs;
@@ -269,6 +273,8 @@ struct chain {
 
 class mff: public tiny::mempool_callback {
 public:
+    chain_delegate* chain_del = nullptr;
+    virtual void link_source(mff* src) {}
     int64_t last_time;
     seqdict_t seqs;
     txs_t txs;
