@@ -126,7 +126,7 @@ int main(int argc, char* const* argv) {
     out->shared_time = &internal_time;
     // in->shared_time = out->shared_time = &internal_time;
     while (c.read_entry()) {
-        if (last_time) {
+        if (last_time && !overwrite_output) {
             if (c.time < last_time) {
                 // we cannot allow jumping back in time
                 fprintf(stderr, "*** the output file (%s) ends at timestamp\n\t%lld\nwhere the input file (%s%s) starts at timestamp\n\t%lld\n*** writing to the output file would result in a jump back in time, which is not allowed. to do this you must do a 3-file merge, i.e. include two input files and a separate output file: mff-conv a-fmt a-name b-fmt b-name out-fmt out-name\n",
