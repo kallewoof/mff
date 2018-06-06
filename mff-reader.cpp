@@ -34,6 +34,8 @@ struct tracked {
     bool operator==(const tracked& other) const { return txid==other.txid; }
 };
 
+bool needs_newline;
+
 int main(int argc, char* const* argv) {
     // sanity check
     {

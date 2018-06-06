@@ -28,6 +28,8 @@ inline mff::mff* alloc_mff_from_format(const std::string& fmt, const std::string
     return nullptr;
 }
 
+bool needs_newline = false;
+
 int main(int argc, char* const* argv) {
     cliargs ca;
     ca.add_option("help", 'h', no_arg);
@@ -87,12 +89,15 @@ int main(int argc, char* const* argv) {
             return 1;
         }
         c.add(in);
+        in->conversion_source = true;
+        in->tag = ca.l.size() > 4 ? strprintf("IN#%zu", i/2) : "IN  ";
     }
     mff::mff* out = alloc_mff_from_format(ca.l[ca.l.size()-2], ca.l[ca.l.size()-1], false);
     if (!out) {
         fprintf(stderr, "invalid format: %s\n", ca.l[ca.l.size()-2]);
         return 1;
     }
+    out->tag = "OUT ";
     for (auto& n : c.nodes) out->link_source(n);
 
     // map in mempool to out
@@ -118,6 +123,13 @@ int main(int argc, char* const* argv) {
         }
         while (out->read_entry()) out_read++;
         printf(" read %zu entries from %s\n", out_read, ca.l[3]);
+        uint64_t total = (uint64_t)out->tell();
+        uint64_t counted = total - 2; // magic 'BM'
+        for (auto& x : out->space_usage) {
+            counted -= x.second;
+            printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
+        }
+        printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
     }
     uint32_t entries = 0;
     out->entry_counter = out_read;
@@ -158,19 +170,20 @@ int main(int argc, char* const* argv) {
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
-            printf(" %02.1f%% %s [%u -> %llu, %.3fx]\r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
+            printf(" %5.1f%% %s [%u -> %llu, %.3fx]\r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
             fflush(stdout);
+            needs_newline = true;
         }
     }
     out->flush();
-    printf("\n");
+    printf("%s", nl());
     // save mempool, if provided
     if (mempool_file != "") {
         c.nodes[0]->save_mempool(mempool_file);
     }
     printf("skipped recs = %llu\n", skipped_recs);
     if (c_start_time) {
-        int64_t end_time = internal_time;
+        int64_t end_time = internal_time + 1800; // rounding
         int64_t elapsed = end_time - c_start_time;
         int64_t days = elapsed / 86400;
         int64_t hours = (elapsed % 86400) / 3600;

@@ -354,7 +354,7 @@ inline unsigned int GetSizeOfVarInt(I n)
 {
     CheckVarIntMode<Mode, I>();
     int nRet = 0;
-    if (Mode == VarIntMode::SIGNED) { assert((n << 1) >> 1 == n); n = (n < 0 ? -n : n) << 1; }
+    if (Mode == VarIntMode::SIGNED) { assert((n << 1) >> 1 == n); n = (n < 0 ? ((-n) << 1) | 1 : n << 1); }
     while(true) {
         nRet++;
         if (n <= 0x7F)

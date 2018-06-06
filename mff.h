@@ -14,6 +14,15 @@
 #include <tinymempool.h>
 #include <streams.h>
 
+extern bool needs_newline;
+static inline const char* nl() {
+    if (needs_newline) {
+        needs_newline = false;
+        return "\n";
+    }
+    return "";
+}
+
 namespace mff {
 
 enum CMD: uint8_t {
@@ -74,6 +83,18 @@ public:
     outpoint(uint64_t n_in, seq_t seq_in)           : known(true),     n(n_in), seq(seq_in), txid(uint256()) {}
     outpoint(uint64_t n_in, const uint256& txid_in) : known(false),    n(n_in), seq(0),      txid(txid_in)   {}
     outpoint(const outpoint& o) : known(o.known), n(o.n), seq(o.seq), txid(o.txid) {}
+
+    void set(const uint256& txid_in) {
+        known = false;
+        seq = 0;
+        txid = txid_in;
+    }
+
+    void set(seq_t seq_in) {
+        known = true;
+        seq = seq_in;
+        txid.SetNull();
+    }
 
     static inline outpoint coinbase() {
         return outpoint(0xffffffff, uint256());
@@ -236,13 +257,6 @@ struct chain_delegate {
     virtual uint32_t expected_block_height() = 0;
 };
 
-class seqdict_server {
-public:
-    seqdict_t seqs;
-    txs_t txs;
-    virtual seq_t claim_seq(const uint256& txid) = 0;
-};
-
 // struct entry {
 //     entry(seqdict_server* sds_in) : sds(sds_in) {}
 //     seqdict_server* sds;
@@ -273,6 +287,8 @@ public:
         state == ::mff::tx::invalid_unknown ? "???" : "*DATA CORRUPTION*"\
     )
 
+class seqdict_server;
+
 class listener_callback {
 public:
     virtual void tx_rec(seqdict_server* source, const tx& x) = 0;
@@ -283,12 +299,21 @@ public:
     virtual void block_unconfirm(seqdict_server* source, uint32_t height) = 0;
 };
 
+class seqdict_server {
+public:
+    seqdict_t seqs;
+    txs_t txs;
+    listener_callback* listener = nullptr;
+    virtual seq_t claim_seq(const uint256& txid) = 0;
+};
+
 class mff: public seqdict_server, public tiny::mempool_callback {
 public:
+    std::string tag = "";
+    bool conversion_source = false;
     std::map<uint8_t,uint64_t> space_usage;
     inline void used(uint8_t cmd, uint64_t amt) { space_usage[cmd] += amt; }
 
-    listener_callback* listener = nullptr;
     chain_delegate* chain_del = nullptr;
     virtual void link_source(mff* src) {}
     int64_t last_time;
@@ -342,9 +367,28 @@ public:
         // convert the inputs
         for (outpoint& o : t2->vin) {
             if (o.is_known()) {
+                if (!server->txs.count(o.get_seq())) {
+                    // the input tx was known but was purged from the system. we can no
+                    // longer access this information, so we consider this a failure
+                    printf("cannot derive tx with id %s due to missing input data\n", t.id.ToString().c_str());
+                    t2.reset();
+                    return t2;
+                }
                 uint256 prevhash = server->txs[o.get_seq()]->id;
-                assert(seqs.count(prevhash));
-                o.seq = seqs[prevhash];
+                if (!seqs.count(prevhash)) {
+                    // turns out we don't know about this outpoint, but the server
+                    // does. if the server has a listener callback, we can tell
+                    // ourselves in a roundabout way about the input
+                    if (server->listener) server->listener->tx_rec(server, *server->txs[o.get_seq()]);
+                }
+                if (!seqs.count(prevhash)) {
+                    // we failed to become aware of the tx. let's just flip it to unknown
+                    fprintf(stderr, "*** known prevout with txid %s (input to %s) not in seqs[] ***\n", prevhash.ToString().c_str(), t.id.ToString().c_str());
+                    o.set(prevhash);
+                } else {
+                    // assert(seqs.count(prevhash));
+                    o.set(seqs[prevhash]);
+                }
             }
         }
         // printf("got %llu=%s\n", seqs[t.id], t.id.ToString().c_str());

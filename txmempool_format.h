@@ -156,6 +156,8 @@ private:
 
     long use_start = 0;
 public:
+    std::set<uint256> known_txid;
+    uint64_t rerecs = 0;
     void link_source(mff* src) override {
         src->chain_del = this;
         src->listener = this;
