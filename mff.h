@@ -23,6 +23,7 @@ static inline const char* nl() {
     }
     return "";
 }
+#define nlprintf(fmt, args...) printf("%s" fmt, nl(), args)
 
 namespace mff {
 

@@ -17,14 +17,14 @@ static uint32_t frozen_max = 0;
 
 #ifdef DEBUG_TXID
 static const uint256 debug_txid = DEBUG_TXID;
-#define DTX(txid, fmt...) if (txid == debug_txid) { printf("%s%s%s", nl(), tag.c_str(), tag == "" ? "" : "   "); printf("[TX] " fmt); }
+#define DTX(txid, fmt...) if (txid == debug_txid) { nlprintf("%s%s", tag.c_str(), tag == "" ? "" : "   "); printf("[TX] " fmt); }
 #define DCOND
 #else
 #define DTX(txid, fmt...)
 #endif
 
 #ifdef DEBUG_SEQ
-#define DSL(s, fmt...) if (s == DEBUG_SEQ) { printf("%s%s%s", nl(), tag.c_str(), tag == "" ? "" : "   "); printf("[SEQ] " fmt); }
+#define DSL(s, fmt...) if (s == DEBUG_SEQ) { nlprintf("%s%s", tag.c_str(), tag == "" ? "" : "   "); printf("[SEQ] " fmt); }
 #else
 #define DSL(s, fmt...)
 #endif
@@ -406,7 +406,7 @@ bool mff_rseq<I>::read_entry() {
                     for (int i = 0; i < steps; i++) ++it;
                     p[j] = *it;
                 }
-                if (frozen) printf("%s*** REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", nl(), rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
+                if (frozen) nlprintf("*** REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
                 if (frozen && frozen_max < blocks_ago) {
                     frozen_max = blocks_ago;
                     printf("****** NEW FROZEN MAX FOR TXID=%s ******\n", t->id.ToString().c_str());
@@ -660,7 +660,7 @@ const std::shared_ptr<tx> mff_rseq<I>::register_entry(const tiny::mempool_entry&
             for (int i = 0; i < steps; i++) ++it;
             p[j] = *it;
         }
-        if (frozen) printf("%s*** REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", nl(), rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
+        if (frozen) nlprintf("*** REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
         if (frozen && frozen_max < blocks_ago) {
             frozen_max = blocks_ago;
             printf("****** NEW FROZEN MAX FOR TXID=%s ******\n", t->id.ToString().c_str());
@@ -1050,7 +1050,7 @@ inline void mff_rseq<I>::update_queues_for_height(uint32_t height) {
 
     if (frozen_queue.count(frozen_purge_height)) {
         if (frozen_queue[frozen_purge_height].size() > 0) {
-            // printf("%s<<<<<<<< %4zu frozen seqs from height=%u\n", nl(), frozen_queue[frozen_purge_height].size(), frozen_purge_height);
+            // nlprintf("<<<<<<<< %4zu frozen seqs from height=%u\n", frozen_queue[frozen_purge_height].size(), frozen_purge_height);
             for (seq_t seq : frozen_queue[frozen_purge_height]) {
                 DSL(seq, "update_queues @ %u (frozen)\n", height);
                 // seq_pool.insert(seq);
@@ -1066,7 +1066,7 @@ inline void mff_rseq<I>::update_queues_for_height(uint32_t height) {
     }
     if (chilled_queue.count(chilled_purge_height)) {
         if (chilled_queue[chilled_purge_height].size() > 0) {
-            // printf("%s<<<<<<<<<<<<< %4zu chilled seqs from height=%u\n", nl(), chilled_queue[chilled_purge_height].size(), chilled_purge_height);
+            // nlprintf("<<<<<<<<<<<<< %4zu chilled seqs from height=%u\n", chilled_queue[chilled_purge_height].size(), chilled_purge_height);
             for (seq_t seq : chilled_queue[chilled_purge_height]) {
                 DSL(seq, "update_queues @ %u (chilled)\n", height);
                 // seq_pool.insert(seq);
