@@ -214,7 +214,7 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
             DTX(x, "supposedly in block %u (unknown)\n", hx);
             assert(in_block_txid.find(x) != in_block_txid.end());
         }
-        printf("block %u ok\n", b->height);
+        // printf("block %u ok\n", b->height);
     } else printf("block %u not checked (block data missing)\n", b->height);
     // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
@@ -842,7 +842,7 @@ void mff_rseq<I>::push_block(int height, uint256 hash, const std::vector<tiny::t
         DTX(x, "supposedly in block %u (unknown)\n", height);
         assert(in_block_txid.find(x) != in_block_txid.end());
     }
-    printf("block %u ok\n", blk->height);
+    // printf("block %u ok\n", blk->height);
     apply_block(blk);
     // active_chain.height = height;
     // active_chain.chain.push_back(blk);
