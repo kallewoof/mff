@@ -10,8 +10,8 @@
 
 static uint32_t frozen_max = 0;
 
-#define DEBUG_TXID uint256S("4e3c156d817bc9562d691930f27941702b1ac64924710e7c95e3a9f7ddd3a72f")
-#define DEBUG_SEQ 470
+// #define DEBUG_TXID uint256S("4e3c156d817bc9562d691930f27941702b1ac64924710e7c95e3a9f7ddd3a72f")
+// #define DEBUG_SEQ 470
 // #define l(args...) if (active_chain.height == 521703) { printf(args); }
 // #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
@@ -760,9 +760,6 @@ void mff_rseq<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry
         if (known) {
             DSL(seq, "confirmed in block (known)\n");
             DTX(tref.hash, "confirmed in block (known)\n");
-            if (tref.hash == debug_txid) {
-                printf("");
-            }
             pending_conf_known.push_back(seq);
             t->location = tx::location_confirmed;
             tx_freeze(seq);
