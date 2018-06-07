@@ -84,7 +84,7 @@ class mempool_callback {
 public:
     virtual void add_entry(std::shared_ptr<const mempool_entry>& entry) { assert(0); }
     virtual void remove_entry(std::shared_ptr<const mempool_entry>& entry, MemPoolRemovalReason reason, std::shared_ptr<tx> cause) { assert(0); }
-    virtual void push_block(int height, uint256 hash) { assert(0); }
+    virtual void push_block(int height, uint256 hash, const std::vector<tx>& txs) { assert(0); }
     virtual void pop_block(int height) { assert(0); }
 };
 

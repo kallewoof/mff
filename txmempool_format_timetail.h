@@ -191,7 +191,7 @@ public:
 
     void add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) override;
     void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) override;
-    void push_block(int height, uint256 hash) override;
+    void push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs) override;
     void pop_block(int height) override;
 };
 

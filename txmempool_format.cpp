@@ -4,11 +4,14 @@
 
 #include <streams.h>
 #include <tinytx.h>
+#include <tinyblock.h>
 
 #include <txmempool_format.h>
 
-// #define DEBUG_TXID uint256S("95399429d0f94042617505efbda700041e4ff848500330749bceb1b6e726f017")
-// #define DEBUG_SEQ 68506
+static uint32_t frozen_max = 0;
+
+#define DEBUG_TXID uint256S("4e3c156d817bc9562d691930f27941702b1ac64924710e7c95e3a9f7ddd3a72f")
+#define DEBUG_SEQ 470
 // #define l(args...) if (active_chain.height == 521703) { printf(args); }
 // #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
@@ -147,7 +150,10 @@ inline FILE* setup_file(const char* path, bool readonly) {
 }
 
 template<int I>
-mff_rseq<I>::mff_rseq(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
+mff_rseq<I>::mff_rseq(const std::string path, bool readonly) : mff_rseq(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly), readonly) {}
+
+template<int I>
+mff_rseq<I>::mff_rseq(FILE* fp, bool readonly) : in_fp(fp), in(in_fp, SER_DISK, 0) {
     assert(get_rseq_ctr(I) == nullptr);
     g_rseq_ctr[I] = this;
     entry_counter = 0;
@@ -174,8 +180,42 @@ mff_rseq<I>::~mff_rseq() {
     g_rseq_ctr[I] = nullptr;
 }
 
+inline bool get_block(uint256 blockhex, tiny::block& b, uint32_t& height) {
+    std::string dstfinal = "blockdata/" + blockhex.ToString() + ".mffb";
+    FILE* fp = fopen(dstfinal.c_str(), "rb");
+    if (!fp) return false;
+    fread(&height, sizeof(uint32_t), 1, fp);
+    CAutoFile deserializer(fp, SER_DISK, 0);
+    deserializer >> b;
+    return true;
+}
+
 template<int I>
 void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
+    tiny::block bx;
+    uint32_t hx;
+    if (get_block(b->hash, bx, hx)) {
+        assert(hx == b->height);
+        std::set<uint256> in_block_txid;
+        for (auto& x : bx.vtx) {
+            DTX(x.hash, "actually in block %u\n", hx);
+            in_block_txid.insert(x.hash);
+        }
+        for (auto& x : b->known) {
+            assert(txs.count(x));
+            DSL(x, "supposedly in block %u (known)\n", hx);
+            DTX(txs[x]->id, "supposedly in block %u (known)\n", hx);
+            if (!(in_block_txid.find(txs[x]->id) != in_block_txid.end())) {
+                printf("%s (seq=%llu) not found in block %u, but listed in b for %u\n", txs[x]->id.ToString().c_str(), x, hx, b->height);
+            }
+            assert(in_block_txid.find(txs[x]->id) != in_block_txid.end());
+        }
+        for (auto& x : b->unknown) {
+            DTX(x, "supposedly in block %u (unknown)\n", hx);
+            assert(in_block_txid.find(x) != in_block_txid.end());
+        }
+        printf("block %u ok\n", b->height);
+    } else printf("block %u not checked (block data missing)\n", b->height);
     // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
@@ -201,7 +241,7 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
     // we need to mark all transactions as confirmed
     for (auto seq : b->known) {
         DSL(seq, "block confirm\n");
-        DTX(txs[seq]->id, "block confirm (known)\n");
+        DTX(txs[seq]->id, "block confirm %u (known)\n", b->height);
         assert(txs.count(seq));
         txs[seq]->location = tx::location_confirmed;
         last_seqs.push_back(seq);
@@ -210,7 +250,7 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
     }
 #ifdef DCOND
     for (auto txid : b->unknown) {
-        DTX(txid, "block confirm (unknown)\n");
+        DTX(txid, "block confirm %u (unknown)\n", b->height);
     }
 #endif
     update_queues();
@@ -353,10 +393,25 @@ bool mff_rseq<I>::read_entry() {
             txs[t->seq] = t;
             seqs[t->id] = t->seq;
 
-            if (known_txid.find(t->id) != known_txid.end()) {
+            if (known_txid.count(t->id)) {
                 rerecs++;
-                // printf("%s*** REREC %llu ***\n", nl(), rerecs);
-            } else known_txid.insert(t->id);
+                bool frozen = known_txid[t->id] < 0;
+                uint32_t discarded_block = (uint32_t)((frozen ? -1 : 1) * known_txid[t->id]);
+                uint32_t blocks_ago = active_chain.height - discarded_block;
+                discarded_x_blocks_ago[frozen].insert(blocks_ago);
+                uint32_t p[3];
+                auto it = discarded_x_blocks_ago[frozen].begin();
+                size_t steps = discarded_x_blocks_ago[frozen].size() / 4;
+                for (int j = 0; j < 3; j++) {
+                    for (int i = 0; i < steps; i++) ++it;
+                    p[j] = *it;
+                }
+                if (frozen) printf("%s*** REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", nl(), rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
+                if (frozen && frozen_max < blocks_ago) {
+                    frozen_max = blocks_ago;
+                    printf("****** NEW FROZEN MAX FOR TXID=%s ******\n", t->id.ToString().c_str());
+                }
+            } else known_txid[t->id] = active_chain.height;
 
             nextseq = std::max(nextseq, t->seq + 1);
             last_seqs.push_back(t->seq);
@@ -528,9 +583,11 @@ bool mff_rseq<I>::read_entry() {
     // } catch (std::ios_base::failure& f) {
     //     return nullptr;
     // }
-    long used_bytes = ftell(in_fp) - use_start;
-    assert(used_bytes > 0);
-    used(cmd, (uint64_t)used_bytes);
+    if (!mff_piping) {
+        long used_bytes = ftell(in_fp) - use_start;
+        assert(used_bytes > 0);
+        used(cmd, (uint64_t)used_bytes);
+    }
     return true;
 }
 
@@ -539,187 +596,6 @@ inline seq_t mff_rseq<I>::claim_seq(const uint256& txid) {
     if (seqs.count(txid)) return seqs[txid];
     return nextseq++;
 }
-
-// template<int I>
-// bool mff_rseq<I>::test_entry(entry* e) {
-//     switch (e->cmd) {
-//         case CMD::TIME_SET:
-//             return false;
-//         case CMD::TX_REC:
-//             if (seqs.count(e->tx->id)) {
-//                 skipped_recs++;
-//                 // we know about it, the other guy didn't, so we ignore
-//                 if (txs[seqs[e->tx->id]]->location != tx::location_in_mempool) {
-//                     printf("warning: ignoring TX_REC for %s but its location is not in the mempool! (location = %d)\n", e->tx->id.ToString().c_str(), txs[seqs[e->tx->id]]->location);
-//                 }
-//                 return false;
-//             }
-//             break;
-//         case CMD::TX_IN:
-//             assert(seqs.count(e->tx->id));
-//             if (txs[seqs[e->tx->id]]->location == tx::location_in_mempool) {
-//                 // we already consider it to be in the mempool
-//                 skipped_recs++;
-//                 return false;
-//             }
-//             break;
-//         default:
-//             break;
-//     }
-//     return true;
-// }
-
-// template<int I>
-// void mff_rseq<I>::write_entry(entry* e) {
-//     if (!test_entry(e)) {
-//         return;
-//     }
-//     uint8_t u8;
-//     CMD cmd = e->cmd;
-//     bool known, timerel;
-//     known = e->known;
-//     u8 = prot(cmd, known);
-//     in << u8;
-// 
-//     switch (cmd) {
-//         case CMD::TIME_SET:
-//             // time updated after switch()
-//             mplinfo("TIME_SET()\n");
-//             break;
-// 
-//         case TX_REC: {
-//             mplinfo("TX_REC(): "); fflush(stdout);
-//             auto t = import_tx(e->sds, e->tx);
-//             DSL(t->seq, "TX_REC\n");
-//             if (txs.count(t->seq)) {
-//                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
-//             }
-//             txs[t->seq] = t;
-//             seqs[t->id] = t->seq;
-//             mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
-//             t->location = tx::location_in_mempool;
-//             serializer.serialize_tx(in, *t);
-//             break;
-//         }
-// 
-//         case TX_IN: {
-//             mplinfo("TX_IN(): "); fflush(stdout);
-//             auto t = import_tx(e->sds, e->tx);
-//             uint64_t seq = seqs[t->id];
-//             assert(seq && txs.count(seq));
-//             DSL(seq, "TX_IN\n");
-//             if (txs.count(seq)) {
-//                 txs[seq]->location = tx::location_in_mempool;
-//             }
-//             seq_write(seq);
-//             mplinfo_("seq=%llu\n", seq);
-//             break;
-//         }
-// 
-//         case TX_CONF: {
-//             // l1("TX_CONF(%s): ", known ? "known" : "unknown");
-//             auto b = e->block_in;
-//             if (known) {
-//                 // we know the block; just get the header info and find it, then apply
-//                 b->is_known = true;
-//                 // conversion not needed
-//                 serializer.serialize_block(in, *b);
-//                 assert(blocks.count(b->hash));
-//                 // l1("block %u=%s\n", b.height, b.hash.ToString().c_str());
-//                 apply_block(blocks[b->hash]);
-//             } else {
-//                 b->is_known = false;
-//                 b = import_block(e->sds, b);
-//                 serializer.serialize_block(in, *b);
-//                 blocks[b->hash] = b;
-//                 // l1("block %u=%s\n", b->height, b->hash.ToString().c_str());
-//                 apply_block(b);
-//             }
-//             break;
-//         }
-// 
-//         case TX_OUT: {
-//             assert(known);
-//             mplinfo("TX_OUT(): "); fflush(stdout);
-//             seq_t seq = seqs[e->tx->id];
-//             uint8_t reason = e->out_reason;
-//             DSL(seq, "TX_OUT\n");
-//             assert(txs.count(seq));
-//             auto t = txs[seq];
-//             t->location = tx::location_discarded;
-//             t->out_reason = (tx::out_reason_enum)reason;
-//             seq_write(seq);
-//             in << reason;
-//             mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
-//             break;
-//         }
-// 
-//         case TX_INVALID: {
-//             mplinfo("TX_INVALID(): "); fflush(stdout);
-//             // out.debugme(true);
-//             replacement_seq = 0;
-//             replacement_txid.SetNull();
-// 
-//             auto t_invalid = import_tx(e->sds, e->tx);
-//             // printf("t_invalid = %s\n", t_invalid->id.ToString().c_str());
-//             seq_t tx_invalid = seqs[t_invalid->id];
-//             assert(!tx_invalid || txs[seqs[t_invalid->id]]->id == t_invalid->id);
-//             uint8_t state = e->invalid_reason;
-//             bool cause_known = e->invalid_cause_known;
-//             seq_t tx_cause(0);
-//             const uint256& invalid_replacement = e->invalid_replacement;
-//             const tiny::tx* invalid_tinytx = e->invalid_tinytx;
-// 
-//             write_txref(tx_invalid, t_invalid->id);
-// 
-//             uint8_t v = state | (cause_known ? CMD::TX_KNOWN_BIT : 0);
-//             in << v;
-//             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
-//                 assert(!invalid_replacement.IsNull());
-//                 seq_t causeseq = seqs.count(invalid_replacement) ? seqs[invalid_replacement] : 0;
-//                 write_txref(causeseq, invalid_replacement);
-//             }
-// 
-//             in << *invalid_tinytx;
-//             // printf("invalid tinytx = %s\n", invalid_tinytx->hash.ToString().c_str());
-// 
-//             if (tx_invalid) {
-//                 auto t = txs[tx_invalid];
-//                 t->location = tx::location_invalid;
-//                 t->invalid_reason = (tx::invalid_reason_enum)state;
-//                 if (txs.count(tx_invalid)) {
-//                     if (invalid_tinytx->hash != txs[tx_invalid]->id) {
-//                         printf("tx hash failure:\n\t%s\nvs\t%s\n", invalid_tinytx->hash.ToString().c_str(), txs[tx_invalid]->id.ToString().c_str());
-//                         printf("tx hex = %s\n", HexStr(*e->invalid_txhex).c_str());
-//                     }
-//                     assert(invalid_tinytx->hash == txs[tx_invalid]->id);
-//                 }
-//             }
-//             mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
-//             mplinfo_("----- tx invalid deserialization ends -----\n");
-//             // out.debugme(false);
-//             break;
-//         }
-// 
-//         case TX_UNCONF: {
-//             mplinfo("TX_UNCONF(): "); fflush(stdout);
-//             uint32_t height = e->unconf_height;
-//             in << height;
-//             if (known) {
-//                 mplinfo_("known, height=%u\n", height);
-//                 undo_block_at_height(height);
-//             } else {
-//                 assert(!"not implemented");
-//             }
-//             break;
-//         }
-// 
-//         default:
-//             mplerr("u8 = %u, cmd = %u\n", u8, cmd);
-//             assert(!"unknown command"); // todo: exceptionize
-//     }
-//     write_set_time(u8, e->time);
-// }
 
 template<int I>
 inline seq_t mff_rseq<I>::seq_read() {
@@ -771,10 +647,25 @@ const std::shared_ptr<tx> mff_rseq<I>::register_entry(const tiny::mempool_entry&
     txs[t->seq] = t;
     seqs[t->id] = t->seq;
 
-    if (known_txid.find(t->id) != known_txid.end()) {
+    if (known_txid.count(t->id)) {
         rerecs++;
-        // printf("%s*** REREC %llu ***\n", nl(), rerecs);
-    } else known_txid.insert(t->id);
+        bool frozen = known_txid[t->id] < 0;
+        uint32_t discarded_block = (uint32_t)((frozen ? -1 : 1) * known_txid[t->id]);
+        uint32_t blocks_ago = active_chain.height - discarded_block;
+        discarded_x_blocks_ago[frozen].insert(blocks_ago);
+        uint32_t p[3];
+        auto it = discarded_x_blocks_ago[frozen].begin();
+        size_t steps = discarded_x_blocks_ago[frozen].size() / 4;
+        for (int j = 0; j < 3; j++) {
+            for (int i = 0; i < steps; i++) ++it;
+            p[j] = *it;
+        }
+        if (frozen) printf("%s*** REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", nl(), rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
+        if (frozen && frozen_max < blocks_ago) {
+            frozen_max = blocks_ago;
+            printf("****** NEW FROZEN MAX FOR TXID=%s ******\n", t->id.ToString().c_str());
+        }
+    } else known_txid[t->id] = active_chain.height;
 
     return t;
 }
@@ -867,10 +758,17 @@ void mff_rseq<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry
     case tiny::MemPoolRemovalReason::BLOCK:     //! Removed for block
         // TX_CONF
         if (known) {
+            DSL(seq, "confirmed in block (known)\n");
+            DTX(tref.hash, "confirmed in block (known)\n");
+            if (tref.hash == debug_txid) {
+                printf("");
+            }
             pending_conf_known.push_back(seq);
             t->location = tx::location_confirmed;
             tx_freeze(seq);
         } else {
+            DSL(seq, "confirmed in block (unknown)\n");
+            DTX(tref.hash, "confirmed in block (unknown)\n");
             pending_conf_unknown.push_back(tref.hash);
         }
         return;
@@ -892,7 +790,7 @@ void mff_rseq<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry
 }
 
 template<int I>
-void mff_rseq<I>::push_block(int height, uint256 hash) {
+void mff_rseq<I>::push_block(int height, uint256 hash, const std::vector<tiny::tx>& vtx) {
     mplinfo("confirm block #%u (%s)\n", height, hash.ToString().c_str());
     uint8_t b;
     std::shared_ptr<block> blk;
@@ -926,6 +824,25 @@ void mff_rseq<I>::push_block(int height, uint256 hash) {
         blocks[hash] = blk;
     }
     assert(blk->height == height);
+    std::set<uint256> in_block_txid;
+    for (auto& x : vtx) {
+        DTX(x.hash, "actually in block %u\n", height);
+        in_block_txid.insert(x.hash);
+    }
+    for (auto& x : blk->known) {
+        assert(txs.count(x));
+        DSL(x, "supposedly in block %u (known)\n", height);
+        DTX(txs[x]->id, "supposedly in block %u (known)\n", height);
+        if (!(in_block_txid.find(txs[x]->id) != in_block_txid.end())) {
+            printf("%s (seq=%llu) not found in block %u, but listed in b for %u\n", txs[x]->id.ToString().c_str(), x, height, blk->height);
+        }
+        assert(in_block_txid.find(txs[x]->id) != in_block_txid.end());
+    }
+    for (auto& x : blk->unknown) {
+        DTX(x, "supposedly in block %u (unknown)\n", height);
+        assert(in_block_txid.find(x) != in_block_txid.end());
+    }
+    printf("block %u ok\n", blk->height);
     apply_block(blk);
     // active_chain.height = height;
     // active_chain.chain.push_back(blk);
@@ -1076,7 +993,7 @@ inline void mff_rseq<I>::block_confirm(seqdict_server* source, const block& b) {
             pending_conf_unknown.push_back(txid);
         }
     }
-    push_block(b.height, b.hash);
+    push_block(b.height, b.hash, std::vector<tiny::tx>());
 }
 
 template<int I>
@@ -1141,6 +1058,7 @@ inline void mff_rseq<I>::update_queues_for_height(uint32_t height) {
                 DSL(seq, "update_queues @ %u (frozen)\n", height);
                 // seq_pool.insert(seq);
                 if (txs.count(seq)) {
+                    known_txid[txs[seq]->id] = -(int64_t)active_chain.height;
                     DTX(txs[seq]->id, "update_queues @ %u (frozen)\n", height);
                     seqs.erase(txs[seq]->id);
                     txs.erase(seq);
@@ -1156,6 +1074,7 @@ inline void mff_rseq<I>::update_queues_for_height(uint32_t height) {
                 DSL(seq, "update_queues @ %u (chilled)\n", height);
                 // seq_pool.insert(seq);
                 if (txs.count(seq)) {
+                    known_txid[txs[seq]->id] = active_chain.height;
                     DTX(txs[seq]->id, "update_queues @ %u (chilled)\n", height);
                     seqs.erase(txs[seq]->id);
                     txs.erase(seq);
@@ -1190,6 +1109,7 @@ template void mff_rseq<0>::apply_block(std::shared_ptr<block> b);
 template void mff_rseq<0>::undo_block_at_height(uint32_t height);
 template seq_t mff_rseq<0>::touched_txid(const uint256& txid, bool count);
 template mff_rseq<0>::mff_rseq(const std::string path, bool readonly);
+template mff_rseq<0>::mff_rseq(FILE* fp, bool readonly);
 template mff_rseq<0>::~mff_rseq();
 template bool mff_rseq<0>::read_entry();
 // template void mff_rseq<0>::write_entry(entry* e);
@@ -1202,7 +1122,7 @@ template void mff_rseq<0>::seq_write(seq_t seq);
 template const std::shared_ptr<tx> mff_rseq<0>::register_entry(const tiny::mempool_entry& entry);
 template void mff_rseq<0>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
 template void mff_rseq<0>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
-template void mff_rseq<0>::push_block(int height, uint256 hash);
+template void mff_rseq<0>::push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs);
 template void mff_rseq<0>::pop_block(int height);
 template int64_t mff_rseq<0>::peek_time();
 
@@ -1210,6 +1130,7 @@ template void mff_rseq<1>::apply_block(std::shared_ptr<block> b);
 template void mff_rseq<1>::undo_block_at_height(uint32_t height);
 template seq_t mff_rseq<1>::touched_txid(const uint256& txid, bool count);
 template mff_rseq<1>::mff_rseq(const std::string path, bool readonly);
+template mff_rseq<1>::mff_rseq(FILE* fp, bool readonly);
 template mff_rseq<1>::~mff_rseq();
 template bool mff_rseq<1>::read_entry();
 // template void mff_rseq<1>::write_entry(entry* e);
@@ -1222,7 +1143,7 @@ template void mff_rseq<1>::seq_write(seq_t seq);
 template const std::shared_ptr<tx> mff_rseq<1>::register_entry(const tiny::mempool_entry& entry);
 template void mff_rseq<1>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
 template void mff_rseq<1>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
-template void mff_rseq<1>::push_block(int height, uint256 hash);
+template void mff_rseq<1>::push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs);
 template void mff_rseq<1>::pop_block(int height);
 template int64_t mff_rseq<1>::peek_time();
 

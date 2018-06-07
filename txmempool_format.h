@@ -156,7 +156,8 @@ private:
 
     long use_start = 0;
 public:
-    std::set<uint256> known_txid;
+    std::map<uint256,int64_t> known_txid;
+    std::set<uint32_t> discarded_x_blocks_ago[2];
     uint64_t rerecs = 0;
     void link_source(mff* src) override {
         src->chain_del = this;
@@ -186,6 +187,7 @@ public:
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
     mff_rseq(const std::string path = "", bool readonly = true);
+    mff_rseq(FILE* fp, bool readonly = true);
     ~mff_rseq();
     bool read_entry() override;
     int64_t peek_time() override;
@@ -204,7 +206,7 @@ public:
 
     void add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) override;
     void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) override;
-    void push_block(int height, uint256 hash) override;
+    void push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs) override;
     void pop_block(int height) override;
 
     inline void tx_rec(seqdict_server* source, const tx& x) override;

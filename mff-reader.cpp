@@ -34,7 +34,8 @@ struct tracked {
     bool operator==(const tracked& other) const { return txid==other.txid; }
 };
 
-bool needs_newline;
+bool needs_newline = false;
+bool mff_piping = false;
 
 int main(int argc, char* const* argv) {
     // sanity check
@@ -52,7 +53,9 @@ int main(int argc, char* const* argv) {
     ca.add_option("depth", 'd', req_arg);
     ca.parse(argc, argv);
 
-    if (ca.m.count('h') || ca.l.size() < 2) {
+    bool piping = mff_piping = !isatty(fileno(stdin));
+
+    if (ca.m.count('h') || ca.l.size() < 1 + (!piping)) {
         fprintf(stderr, "syntax: %s [--help|-h] [--long|-l] [--verbose|-v] [--depth=<depth>|-d<depth>] <mff file> <txid> [<txid> [...]]\n", argv[0]);
         return 1;
     }
@@ -67,47 +70,47 @@ int main(int argc, char* const* argv) {
 
     std::string infile = ca.l[0];
     std::set<tracked> txids;
-    for (size_t i = 1; i < ca.l.size(); ++i) {
+    for (size_t i = !piping; i < ca.l.size(); ++i) {
         txids.insert(tracked{uint256S(ca.l[i]), depth});
     }
-    mff::mff_rseq<0> reader(infile);
-    reader.read_entry();
-    printf("%s: ---log starts---\n", time_string(reader.last_time).c_str());
+    mff::mff_rseq<0>* reader = piping ? new mff::mff_rseq<0>(stdin) : new mff::mff_rseq<0>(infile);
+    reader->read_entry();
+    printf("%s: ---log starts---\n", time_string(reader->last_time).c_str());
     uint64_t entries = 0;
     uint32_t nooutputiters = 0;
     do {
         bool count = true;
         for (const tracked& t : txids) {
             const uint256& txid = t.txid;
-            if (reader.touched_txid(txid, count)) {
+            if (reader->touched_txid(txid, count)) {
                 nooutputiters = 0;
-                if (reader.last_cmd == mff::TX_INVALID && txid == reader.get_replacement_txid() && txids.find(reader.get_invalidated_txid()) != txids.end()) {
+                if (reader->last_cmd == mff::TX_INVALID && txid == reader->get_replacement_txid() && txids.find(reader->get_invalidated_txid()) != txids.end()) {
                     // if we have both the invalidated and replacement txids in the txids set,
                     // we skip the replacement version or we end up showing the same entry
                     // twice
                     continue;
                 }
-                printf("%s: %s", time_string(reader.last_time).c_str(), cmd_str(reader.last_cmd).c_str());
-                if (reader.last_cmd == mff::TX_INVALID) {
-                    printf(" %s (%s)", txid_str(reader.get_invalidated_txid()).c_str(), tx_invalid_state_str(reader.last_invalid_state));
-                    if (reader.replacement_seq != 0 || !reader.replacement_txid.IsNull()) {
-                        uint256 replacement = reader.get_replacement_txid();
+                printf("%s: %s", time_string(reader->last_time).c_str(), cmd_str(reader->last_cmd).c_str());
+                if (reader->last_cmd == mff::TX_INVALID) {
+                    printf(" %s (%s)", txid_str(reader->get_invalidated_txid()).c_str(), tx_invalid_state_str(reader->last_invalid_state));
+                    if (reader->replacement_seq != 0 || !reader->replacement_txid.IsNull()) {
+                        uint256 replacement = reader->get_replacement_txid();
                         txids.insert(tracked{replacement, t.depth});
                         printf(" -> %s", txid_str(replacement).c_str());
                     }
                     if (verbose) {
-                        printf("\n\t%s", HexStr(reader.last_invalidated_txhex).c_str());
+                        printf("\n\t%s", HexStr(reader->last_invalidated_txhex).c_str());
                     }
-                } else if (reader.last_cmd == mff::TX_OUT) {
-                    printf(" (%s)", tx_out_reason_str(reader.last_out_reason));
-                } else if (reader.last_cmd == mff::TX_REC) {
-                    const auto& t = reader.last_recorded_tx;
+                } else if (reader->last_cmd == mff::TX_OUT) {
+                    printf(" (%s)", tx_out_reason_str(reader->last_out_reason));
+                } else if (reader->last_cmd == mff::TX_REC) {
+                    const auto& t = reader->last_recorded_tx;
                     // printf("\n\t%s\n", t->to_string().c_str());
                     std::string extra = "";
                     // check if any of our targeted tx's is spent by this tx
                     for (const tracked& tracked2 : txids) {
                         uint32_t index;
-                        if (t->spends(tracked2.txid, reader.seqs[tracked2.txid], index)) {
+                        if (t->spends(tracked2.txid, reader->seqs[tracked2.txid], index)) {
                             extra += std::string(" (spends ") + txid_str(tracked2.txid) + ":" + std::to_string(index) + ")";
                             if (tracked2.depth > 0 && txids.find(tracked{t->id}) == txids.end()) {
                                 txids.insert(tracked{tracked2, t->id});
@@ -116,7 +119,7 @@ int main(int argc, char* const* argv) {
                     }
                     if (!t->is(txid) && extra == "") {
                     //     // printf(" (");
-                    // } else if (t->spends(txid, reader.seqs[txid])) {
+                    // } else if (t->spends(txid, reader->seqs[txid])) {
                     //     extra = std::string(" (spends ") + txid_str(txid) + ")";
                     //     // printf(" (spends %s: ", txid_str(txid).c_str());
                     // } else {
@@ -124,15 +127,15 @@ int main(int argc, char* const* argv) {
                         // printf(" (???: ");
                     }
                     printf(" (first seen %s%s - %llu vbytes, %llu fee, %.3lf fee rate (s/vbyte))\n", txid_str(t->id).c_str(), extra.c_str(), t->vsize(), t->fee, t->feerate());
-                    // const mff::tx& t = *reader.txs[reader.seqs[txid]];
-                    // printf(" (txid seq=%llu) %s", reader.seqs[txid], t->to_string().c_str());
-                    // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %llu = %s", x.get_seq(), reader.txs[x.get_seq()]->id.ToString().c_str());
+                    // const mff::tx& t = *reader->txs[reader->seqs[txid]];
+                    // printf(" (txid seq=%llu) %s", reader->seqs[txid], t->to_string().c_str());
+                    // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %llu = %s", x.get_seq(), reader->txs[x.get_seq()]->id.ToString().c_str());
                     // we don't wanna bother with tracking TX_REC for multiple txids so we just break the loop here
                     break;
-                } else if (reader.last_cmd == mff::TX_CONF) {
-                    printf(" (%s in #%u)", txid_str(txid).c_str(), reader.active_chain.height);
-                } else if (reader.last_cmd == mff::TX_IN) {
-                    printf(" (%s)", txid_str(reader.last_recorded_tx->id).c_str());
+                } else if (reader->last_cmd == mff::TX_CONF) {
+                    printf(" (%s in #%u)", txid_str(txid).c_str(), reader->active_chain.height);
+                } else if (reader->last_cmd == mff::TX_IN) {
+                    printf(" (%s)", txid_str(reader->last_recorded_tx->id).c_str());
                 }
                 fputc('\n', stdout);
             }
@@ -141,18 +144,19 @@ int main(int argc, char* const* argv) {
         entries++;
         nooutputiters++;
         if (nooutputiters > 10000) {
-            printf("%s\r", time_string(reader.last_time).c_str());
+            printf("%s\r", time_string(reader->last_time).c_str());
             fflush(stdout);
         }
-    } while (reader.read_entry());
-    printf("%s: ----log ends----\n", time_string(reader.last_time).c_str());
+    } while (reader->read_entry());
+    printf("%s: ----log ends----\n", time_string(reader->last_time).c_str());
     printf("%llu entries parsed\n", entries);
     printf("txid hits:\n");
     uint32_t max = 0;
-    for (const auto& th : reader.txid_hits) {
+    for (const auto& th : reader->txid_hits) {
         if (th.second > max || (th.second == max && max > 4)) {
             printf("%s: %6u\n", th.first.ToString().c_str(), th.second);
             max = th.second;
         }
     }
+    delete reader;
 }

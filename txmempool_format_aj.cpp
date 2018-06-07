@@ -430,8 +430,7 @@ void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
             pending_conf_unknown.push_back(t.hash);
         }
     }
-    blk->is_known = 
-    blocks.count(hash);
+    blk->is_known = blocks.count(hash);
     blk->count_known = pending_conf_known.size();
     blocks[hash] = blk;
     active_chain.height = height;
@@ -527,7 +526,7 @@ bool mff_aj::read_entry() {
         uint32_t expected_block_height = active_chain.chain.size() == 0 && chain_del != nullptr ? chain_del->expected_block_height() : active_chain.height + 1;
         if (expected_block_height && expected_block_height < height) {
             for (uint32_t i = expected_block_height; i < height; i++) {
-                printf("filling gap (height=%u)\n", i);
+                printf("%sfilling gap (height=%u)\n", nl(), i);
                 tiny::block blk2;
                 uint256 blockhash2;
                 rpc_get_block(i, blk2, blockhash2);
@@ -538,7 +537,7 @@ bool mff_aj::read_entry() {
         return true;//read_entry();
     }
 
-    fprintf(stderr, "\nunknown command %s\n", action);
+    fprintf(stderr, "%sunknown command %s\n", nl(), action);
     assert(0);
 }
 

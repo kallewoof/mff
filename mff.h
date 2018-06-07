@@ -14,6 +14,7 @@
 #include <tinymempool.h>
 #include <streams.h>
 
+extern bool mff_piping;
 extern bool needs_newline;
 static inline const char* nl() {
     if (needs_newline) {

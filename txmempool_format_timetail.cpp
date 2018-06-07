@@ -787,7 +787,7 @@ void mff_rseq_tt<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& en
 }
 
 template<int I>
-void mff_rseq_tt<I>::push_block(int height, uint256 hash) {
+void mff_rseq_tt<I>::push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs) {
     mplinfo("confirm block #%u (%s)\n", height, hash.ToString().c_str());
     uint8_t b;
     std::shared_ptr<block> blk;
@@ -927,7 +927,7 @@ template void mff_rseq_tt<0>::seq_write(seq_t seq);
 template const std::shared_ptr<tx> mff_rseq_tt<0>::register_entry(const tiny::mempool_entry& entry);
 template void mff_rseq_tt<0>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
 template void mff_rseq_tt<0>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
-template void mff_rseq_tt<0>::push_block(int height, uint256 hash);
+template void mff_rseq_tt<0>::push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs);
 template void mff_rseq_tt<0>::pop_block(int height);
 template int64_t mff_rseq_tt<0>::peek_time();
 
@@ -947,7 +947,7 @@ template void mff_rseq_tt<1>::seq_write(seq_t seq);
 template const std::shared_ptr<tx> mff_rseq_tt<1>::register_entry(const tiny::mempool_entry& entry);
 template void mff_rseq_tt<1>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
 template void mff_rseq_tt<1>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
-template void mff_rseq_tt<1>::push_block(int height, uint256 hash);
+template void mff_rseq_tt<1>::push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs);
 template void mff_rseq_tt<1>::pop_block(int height);
 template int64_t mff_rseq_tt<1>::peek_time();
 

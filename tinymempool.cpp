@@ -80,9 +80,11 @@ void mempool::insert_tx(std::shared_ptr<tx> x) {
 void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRemovalReason reason, std::shared_ptr<tx> cause) {
     if (!entry_map.count(entry->x->hash)) return;
 
-    // evict any tx dependent on x
-    while (ancestry.count(entry->x->hash)) {
-        remove_entry(ancestry[entry->x->hash].back(), reason, cause);
+    if (reason != MemPoolRemovalReason::BLOCK) {
+        // evict any tx dependent on x
+        while (ancestry.count(entry->x->hash)) {
+            remove_entry(ancestry[entry->x->hash].back(), reason, cause);
+        }
     }
 
     if (callback) {
@@ -136,7 +138,7 @@ void mempool::process_block(int height, uint256 hash, const std::vector<tx>& txs
             remove_entry(entry_map[x.hash], MemPoolRemovalReason::BLOCK);
         }
     }
-    if (callback) callback->push_block(height, hash);
+    if (callback) callback->push_block(height, hash, txs);
 }
 
 void mempool::reorg_block(int height) {

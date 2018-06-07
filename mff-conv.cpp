@@ -29,6 +29,7 @@ inline mff::mff* alloc_mff_from_format(const std::string& fmt, const std::string
 }
 
 bool needs_newline = false;
+bool mff_piping = false;
 
 int main(int argc, char* const* argv) {
     cliargs ca;
@@ -142,7 +143,13 @@ int main(int argc, char* const* argv) {
     }
     out->shared_time = &internal_time;
     // in->shared_time = out->shared_time = &internal_time;
+    int64_t timepoint_a, timepoint_b, internalpoint_a, internalpoint_b;
+    timepoint_a = timepoint_b = start_time;
+    internalpoint_a = internalpoint_b = 0;
     while (c.read_entry()) {
+        if (!internalpoint_a) {
+            internalpoint_a = internalpoint_b = c.time;
+        }
         if (!c_start_time) c_start_time = c.time;
         if (last_time && !overwrite_output) {
             if (c.time < last_time) {
@@ -165,14 +172,21 @@ int main(int argc, char* const* argv) {
             long pos = c.nodes[0]->tell();
             float done = (float)(100 * pos) / in_bytes;
             int64_t now = GetTime();
-            int64_t elapsed = now - start_time; // real time passed
-            int64_t mff_time_elapsed = internal_time - entry_start; // input file time passed
+            int64_t elapsed = now - timepoint_a; // real time passed
+            int64_t mff_time_elapsed = internal_time - internalpoint_a; // input file time passed
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
             printf(" %5.1f%% %s [%u -> %llu, %.3fx]\r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
             fflush(stdout);
             needs_newline = true;
+            if (elapsed > 20 && now - timepoint_b > 10) {
+                // switch perspectives
+                timepoint_a = timepoint_b;
+                internalpoint_a = internalpoint_b;
+                timepoint_b = now;
+                internalpoint_b = internal_time;
+            }
         }
     }
     out->flush();
