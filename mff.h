@@ -324,7 +324,7 @@ public:
 
     chain_delegate* chain_del = nullptr;
     virtual void link_source(mff* src) {}
-    int64_t last_time;
+    int64_t last_time = 0;
     uint64_t entry_counter = 0;
     int64_t* shared_time = nullptr;
     std::shared_ptr<tiny::mempool> mempool;
