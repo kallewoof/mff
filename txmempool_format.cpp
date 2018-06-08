@@ -900,12 +900,6 @@ void mff_rseq<I>::push_block(int height, uint256 hash, const std::vector<tiny::t
     assert(blk->height == height);
     if (vtx.size()) {
         std::set<uint256> in_block_txid;
-        if (height == 506205) {
-            printf("%s   here is the block m8:\n", tag.c_str());
-            for (auto& x : vtx) {
-                printf("%s   - %s\n", tag.c_str(), x.hash.ToString().c_str());
-            }
-        }
         for (auto& x : vtx) {
             DTX(x.hash, "actually in block %u\n", height);
             in_block_txid.insert(x.hash);
