@@ -94,7 +94,7 @@ CAmount output_amount(const uint256& txid, int index) {
     long cmarker = ftell(fp);
     
     if (!fbinsearch(fp, cmarker, cmarker + (36 - prefix_len) * txcount, &txid.begin()[prefix_len], 32 - prefix_len, 36 - prefix_len)) {
-        fprintf(stderr, "cannot find txid %s in file %s\n", txid.ToString().c_str(), fname.c_str());
+        // fprintf(stderr, "cannot find txid %s in file %s\n", txid.ToString().c_str(), fname.c_str());
         return -1;
     }
     uint32_t offset;

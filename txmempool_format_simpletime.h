@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TXMEMPOOL_FORMAT_H
-#define BITCOIN_TXMEMPOOL_FORMAT_H
+#ifndef BITCOIN_TXMEMPOOL_FORMAT_SIMPLETIME_H
+#define BITCOIN_TXMEMPOOL_FORMAT_SIMPLETIME_H
 
 #include <mff.h>
 #include <serialize.h>
@@ -13,7 +13,7 @@ extern uint64_t skipped_recs;
 
 namespace mff {
 
-class rseq_container {
+class simpletime_rseq_container {
 public:
     virtual long tell() = 0;
     virtual seq_t seq_read() = 0;
@@ -21,10 +21,10 @@ public:
 };
 
 #define MAX_RSEQ_CONTAINERS 2
-extern rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
+extern simpletime_rseq_container* g_simpletime_rseq_ctr[MAX_RSEQ_CONTAINERS];
 
 template <typename Stream, int I>
-class rseq_adapter: public adapter<Stream> {
+class simpletime_rseq_adapter: public adapter<Stream> {
 public:
     #define DEBUG_SER(args...) // printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
@@ -33,7 +33,7 @@ public:
         Serialize(s, VARINT(o.n));
         if (o.known) {
             DEBUG_SER("o.seq = %llu\n", o.seq);
-            g_rseq_ctr[I]->seq_write(o.seq);
+            g_simpletime_rseq_ctr[I]->seq_write(o.seq);
         } else {
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
             Serialize(s, o.txid);
@@ -44,7 +44,7 @@ public:
         Unserialize(s, VARINT(o.n));
         DEBUG_SER("o.n=%llu\n", o.n);
         if (o.known) {
-            o.seq = g_rseq_ctr[I]->seq_read();
+            o.seq = g_simpletime_rseq_ctr[I]->seq_read();
             DEBUG_SER("o.seq = %llu\n", o.seq);
         } else {
             Unserialize(s, o.txid);
@@ -52,40 +52,40 @@ public:
         }
     }
     void serialize_tx(Stream& s, const tx& t) {
-        long l = g_rseq_ctr[I]->tell();
+        long l = g_simpletime_rseq_ctr[I]->tell();
         #undef DEBUG_SER
         #define DEBUG_SER(args...) if (l == 116166765) printf(args)
         DEBUG_SER("serializing tx\n");
-        DEBUG_SER("- id: %s\n", t.id.ToString().c_str());   // 32
+        DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
         Serialize(s, t.id);
         DEBUG_SER("- seq: %llu\n", t.seq);
-        g_rseq_ctr[I]->seq_write(t.seq);
-        DEBUG_SER("- weight: %llu\n", t.weight);            // 33   40
+        g_simpletime_rseq_ctr[I]->seq_write(t.seq);
+        DEBUG_SER("- weight: %llu\n", t.weight);
         Serialize(s, VARINT(t.weight));
-        DEBUG_SER("- fee: %llu\n", t.fee);                  // 34   48
+        DEBUG_SER("- fee: %llu\n", t.fee);
         Serialize(s, VARINT(t.fee));
-        DEBUG_SER("- inputs: %llu\n", t.inputs);            // 35   50
+        DEBUG_SER("- inputs: %llu\n", t.inputs);
         Serialize(s, VARINT(t.inputs));
         for (uint64_t i = 0; i < t.inputs; ++i) {
             DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
             DEBUG_SER("--- state: %u\n", t.state[i]);
-            Serialize(s, t.state[i]);                       // 1
+            Serialize(s, t.state[i]);
             if (t.state[i] == outpoint::state_coinbase) {
                 DEBUG_SER("--- vin: (coinbase)\n");
             }
             if (t.state[i] != outpoint::state_confirmed && t.state[i] != outpoint::state_coinbase) {
                 // if (!ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
                 DEBUG_SER("--- vin: %s\n", t.vin[i].to_string().c_str());
-                t.vin[i].serialize(s, this);                // 2    36
-            }                                               // 0    36
-        }                                                   // 1    37
+                t.vin[i].serialize(s, this);
+            }
+        }
     }
     void deserialize_tx(Stream& s, tx& t) {
-        long l = g_rseq_ctr[I]->tell();
+        long l = g_simpletime_rseq_ctr[I]->tell();
         DEBUG_SER("deserializing tx\n");
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
-        t.seq = g_rseq_ctr[I]->seq_read();
+        t.seq = g_simpletime_rseq_ctr[I]->seq_read();
         DEBUG_SER("- seq: %llu\n", t.seq);
         Unserialize(s, VARINT(t.weight));
         DEBUG_SER("- weight: %llu\n", t.weight);
@@ -119,7 +119,7 @@ public:
         if (b.is_known) return;
         Serialize(s, VARINT(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            g_rseq_ctr[I]->seq_write(b.known[i]);
+            g_simpletime_rseq_ctr[I]->seq_write(b.known[i]);
         }
         Serialize(s, b.unknown);
     }
@@ -130,20 +130,20 @@ public:
         Unserialize(s, VARINT(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_rseq_ctr[I]->seq_read();
+            b.known[i] = g_simpletime_rseq_ctr[I]->seq_read();
         }
         Unserialize(s, b.unknown);
     }
 };
 
 template<int I>
-class mff_rseq: public mff, public rseq_container, public chain_delegate, public listener_callback {
+class mff_simpletime_rseq: public mff, public simpletime_rseq_container, public chain_delegate, public listener_callback {
 private:
     constexpr static size_t MAX_BLOCKS = 6; // keep this many blocks
     int64_t lastflush;
     FILE* in_fp;
     CAutoFile in;
-    rseq_adapter<CAutoFile, I> serializer;
+    simpletime_rseq_adapter<CAutoFile, I> serializer;
     std::vector<uint256> pending_conf_unknown;
     std::vector<seq_t> pending_conf_known;
 
@@ -195,9 +195,9 @@ public:
     std::vector<uint8_t> last_invalidated_txhex; // for TX_INVALID
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
-    mff_rseq(const std::string path = "", bool readonly = true);
-    mff_rseq(FILE* fp, bool readonly = true);
-    ~mff_rseq();
+    mff_simpletime_rseq(const std::string path = "", bool readonly = true);
+    mff_simpletime_rseq(FILE* fp, bool readonly = true);
+    ~mff_simpletime_rseq();
     bool read_entry() override;
     int64_t peek_time() override;
     // void write_entry(entry* e) override;
@@ -228,4 +228,4 @@ public:
 
 } // namespace mff
 
-#endif // BITCOIN_TXMEMPOOL_FORMAT_H
+#endif // BITCOIN_TXMEMPOOL_FORMAT_SIMPLETIME_H

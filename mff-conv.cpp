@@ -4,6 +4,7 @@
 #include <txmempool_format_rs.h>
 #include <txmempool_format_aj.h>
 #include <txmempool_format_timetail.h>
+#include <txmempool_format_simpletime.h>
 #include <cliargs.h>
 #include <tinytx.h>
 #include <amap.h>
@@ -24,6 +25,7 @@ inline mff::mff* alloc_mff_from_format(const std::string& fmt, const std::string
     }
     else if (fmt == "mff-tt") return new mff::mff_rseq_tt<0>(path, readonly);
     else if (fmt == "mff-rs") return new mff::mff_rs(path, readonly);
+    else if (fmt == "mff-st") return new mff::mff_simpletime_rseq<0>(path, readonly);
     else if (fmt == "aj-dump") return new mff::mff_aj(path, readonly);
     return nullptr;
 }
@@ -48,6 +50,7 @@ int main(int argc, char* const* argv) {
             "  mff       Standard Memory File Format\n"
             "  mff-tt    Time-tail MFF (Rev 2018-05-27)\n"
             "  mff-rs    Reused sequence based Memory File Format\n"
+            "  mff-st    Simple-time MFF (Rev 2018-06-08)\n"
             "  aj-dump   AJ mempool history dump (ZMQ)\n"
         );
         return 1;

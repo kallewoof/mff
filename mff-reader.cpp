@@ -102,7 +102,7 @@ int main(int argc, char* const* argv) {
                         printf("\n\t%s", HexStr(reader->last_invalidated_txhex).c_str());
                     }
                 } else if (reader->last_cmd == mff::TX_OUT) {
-                    printf(" (%s)", tx_out_reason_str(reader->last_out_reason));
+                    printf(" %s (%s)", txid_str(reader->get_invalidated_txid()).c_str(), tx_out_reason_str(reader->last_out_reason));
                 } else if (reader->last_cmd == mff::TX_REC) {
                     const auto& t = reader->last_recorded_tx;
                     // printf("\n\t%s\n", t->to_string().c_str());
@@ -126,14 +126,14 @@ int main(int argc, char* const* argv) {
                         extra = " (?)";
                         // printf(" (???: ");
                     }
-                    printf(" (first seen %s%s - %llu vbytes, %llu fee, %.3lf fee rate (s/vbyte))\n", txid_str(t->id).c_str(), extra.c_str(), t->vsize(), t->fee, t->feerate());
+                    printf(" (first seen %s%s - %llu vbytes, %llu fee, %.3lf fee rate (s/vbyte), block #%u)\n", txid_str(t->id).c_str(), extra.c_str(), t->vsize(), t->fee, t->feerate(), reader->active_chain.height);
                     // const mff::tx& t = *reader->txs[reader->seqs[txid]];
                     // printf(" (txid seq=%llu) %s", reader->seqs[txid], t->to_string().c_str());
                     // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %llu = %s", x.get_seq(), reader->txs[x.get_seq()]->id.ToString().c_str());
                     // we don't wanna bother with tracking TX_REC for multiple txids so we just break the loop here
                     break;
                 } else if (reader->last_cmd == mff::TX_CONF) {
-                    printf(" (%s in #%u)", txid_str(txid).c_str(), reader->active_chain.height);
+                    printf(" (%s in #%u=%s)", txid_str(txid).c_str(), reader->active_chain.height, reader->active_chain.chain.size() > 0 ? reader->active_chain.chain.back()->hash.ToString().c_str() : "???");
                 } else if (reader->last_cmd == mff::TX_IN) {
                     printf(" (%s)", txid_str(reader->last_recorded_tx->id).c_str());
                 }
@@ -158,5 +158,12 @@ int main(int argc, char* const* argv) {
             max = th.second;
         }
     }
+    uint64_t total = (uint64_t)reader->tell();
+    uint64_t counted = total;
+    for (auto& x : reader->space_usage) {
+        counted -= x.second;
+        printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
+    }
+    printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
     delete reader;
 }

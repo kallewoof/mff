@@ -102,8 +102,12 @@ public:
     std::vector<std::shared_ptr<const mempool_entry>> entry_queue;
     /**
      * Insert x into the mempool, removing any conflicting transactions.
+     * Retained transactions are not enqueued, and thus never subject to
+     * removal even if their fees are lower than other transactions.
+     * This is used when processing blocks, as transactions not in mempool
+     * are temporarily added before removal
      */
-    void insert_tx(std::shared_ptr<tx> x);
+    void insert_tx(std::shared_ptr<tx> x, bool retain = false);
     /**
      * Remove entry from mempool. Any transactions which depend on x as input are
      * also removed.

@@ -25,6 +25,7 @@ extern rseq_tt_container* g_rseq_tt_ctr[MAX_RSEQ_TT_CONTAINERS];
 template <typename Stream, int I>
 class rseq_tt_adapter: public adapter<Stream> {
 public:
+    #undef DEBUG_SER
     #define DEBUG_SER(args...) //printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
         DEBUG_SER("serializing %s outpoint\n", o.known ? "known" : "unknown");

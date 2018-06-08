@@ -38,9 +38,14 @@ enum CMD: uint8_t {
     CHECKPOINT = 0x07,
     GAP        = 0x08,
 
-    TX_KNOWN_BIT = 0x40,    // 0b0100 0000
-    TIME_REL_BIT = 0x80,    // 0b1000 0000
+    TX_KNOWN_BIT_V1 = 0x40,       // 0b0100 0000
+    TIME_REL_BIT_V1 = 0x80,       // 0b1000 0000
+    TX_KNOWN_BIT_V2 = 0x20,       // 0b0010 0000
+    TIME_REL_MASK = 0x40 | 0x80,  // 0b1100 0000
 };
+
+#define time_rel_value(cmd) (((cmd) >> 6) & 0x3)
+inline uint8_t time_rel_bits(int64_t time) { return ((time < 3 ? time : 3) << 6); }
 
 inline std::string cmd_str(CMD c) {
     static const char* str[] = {
@@ -313,6 +318,7 @@ class mff: public seqdict_server, public tiny::mempool_callback {
 public:
     std::string tag = "";
     bool conversion_source = false;
+    bool seekable = true;
     std::map<uint8_t,uint64_t> space_usage;
     inline void used(uint8_t cmd, uint64_t amt) { space_usage[cmd] += amt; }
 
@@ -346,11 +352,19 @@ public:
     virtual seq_t claim_seq(const uint256& txid) override {
         assert(!"not implemented");
     }
-    uint8_t prot(CMD cmd, bool known) {
+
+    inline uint8_t prot_v1(CMD cmd, bool known) {
         // printf("- %s -\n", cmd_str(cmd).c_str());
         entry_counter++;
         int64_t time = shared_time ? *shared_time : GetTime();
-        return cmd | (known ? CMD::TX_KNOWN_BIT : 0) | (time - last_time < 254 ? CMD::TIME_REL_BIT : 0);
+        return cmd | (known ? CMD::TX_KNOWN_BIT_V1 : 0) | (time - last_time < 254 ? CMD::TIME_REL_BIT_V1 : 0);
+    }
+
+    inline uint8_t prot_v2(CMD cmd, bool known) {
+        // printf("- %s -\n", cmd_str(cmd).c_str());
+        entry_counter++;
+        int64_t time = shared_time ? *shared_time : GetTime();
+        return cmd | (known ? CMD::TX_KNOWN_BIT_V2 : 0) | time_rel_bits(time - last_time);
     }
 
     std::shared_ptr<tx> import_tx(seqdict_server* server, const tx& t) {
@@ -461,6 +475,11 @@ public:
         // we ran out of entries; guess this is good bye
         return false;
     }
+};
+
+struct seekable_record {
+    long pos;
+    seq_t seq;
 };
 
 } // namespace mff

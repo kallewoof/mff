@@ -13,7 +13,7 @@ typename T::const_iterator find_shared_entry(const T& v, const std::shared_ptr<c
     });
 }
 
-void mempool::insert_tx(std::shared_ptr<tx> x) {
+void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
     // avoid duplicate insertions
     if (entry_map.count(x->hash)) return;
 
@@ -73,8 +73,10 @@ void mempool::insert_tx(std::shared_ptr<tx> x) {
         callback->add_entry(entry);
     }
 
-    // enqueue for potential removal
-    enqueue(entry);
+    if (!retain) {
+        // enqueue for potential removal
+        enqueue(entry);
+    }
 }
 
 void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRemovalReason reason, std::shared_ptr<tx> cause) {
@@ -127,13 +129,16 @@ void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRe
 
     // remove from entry queue
     auto it = find_shared_entry(entry_queue, entry);
-    assert(it != entry_queue.end());
-    entry_queue.erase(it);
-    // entry_queue.erase(std::find(entry_queue.begin(), entry_queue.end(), entry));
+    if (it != entry_queue.end()) {
+        entry_queue.erase(it);
+    }
 }
 
 void mempool::process_block(int height, uint256 hash, const std::vector<tx>& txs) {
     for (const auto& x : txs) {
+        if (!entry_map.count(x.hash)) {
+            insert_tx(std::make_shared<tx>(x), true);
+        }
         if (entry_map.count(x.hash)) {
             remove_entry(entry_map[x.hash], MemPoolRemovalReason::BLOCK);
         }

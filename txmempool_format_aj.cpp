@@ -56,6 +56,10 @@ mff_aj::~mff_aj() {
 }
 
 void mff_aj::apply_block(std::shared_ptr<block> b) {
+    if (active_chain.chain.size() > 0 && b->hash == active_chain.chain.back()->hash) {
+        // we are already on this block
+        return;
+    }
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
         mplwarn("dealing with TX_UNCONF missing bug 20180502153142\n");
@@ -525,8 +529,9 @@ bool mff_aj::read_entry() {
         // fill in gaps in case this is not the next block
         uint32_t expected_block_height = active_chain.chain.size() == 0 && chain_del != nullptr ? chain_del->expected_block_height() : active_chain.height + 1;
         if (expected_block_height && expected_block_height < height) {
+            // printf("expected block height %u, got block at height %u\n", expected_block_height, height);
             for (uint32_t i = expected_block_height; i < height; i++) {
-                printf("%sfilling gap (height=%u)\n", nl(), i);
+                nlprintf("filling gap (height=%u)\n", i);
                 tiny::block blk2;
                 uint256 blockhash2;
                 rpc_get_block(i, blk2, blockhash2);
@@ -537,7 +542,7 @@ bool mff_aj::read_entry() {
         return true;//read_entry();
     }
 
-    fprintf(stderr, "%sunknown command %s\n", nl(), action);
+    fprintf(stderr, "\nunknown command %s\n", action);
     assert(0);
 }
 
