@@ -455,11 +455,11 @@ class CAutoFile
 private:
     const int nType;
     const int nVersion;
-    bool debugging = false;
 
     FILE* file;	
 
 public:
+    bool debugging = false;
     void debugme(bool yes) { debugging = yes; }
     CAutoFile(FILE* filenew, int nTypeIn, int nVersionIn) : nType(nTypeIn), nVersion(nVersionIn)
     {

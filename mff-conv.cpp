@@ -180,7 +180,7 @@ int main(int argc, char* const* argv) {
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
-            printf(" %5.1f%% %s [%u -> %llu, %.3fx]\r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
+            printf(" %5.1f%% %s [%u -> %llu, %7.3fx]\r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
             fflush(stdout);
             needs_newline = true;
             if (elapsed > 20 && now - timepoint_b > 10) {
@@ -213,4 +213,5 @@ int main(int argc, char* const* argv) {
         printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
     }
     printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
+    printf("timestamp at end: %lld\n", out->last_time);
 }

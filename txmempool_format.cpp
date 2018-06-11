@@ -9,9 +9,6 @@
 #include <txmempool_format.h>
 
 static uint32_t frozen_max = 0;
-static uint64_t one_times = 0;
-static uint64_t zero_times = 0;
-static uint64_t other_times = 0;
 
 // #define DEBUG_TXID uint256S("7505b0a3fc9ebde0994dcac8d8d1e4c424c0adbda4a0ab4670abfb027fe2189f")
 // #define DEBUG_SEQ 1314
@@ -56,24 +53,25 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 #define showinfo false
 // bool showinfo = false;
-#define mplinfo_(args...) // if (showinfo) printf(args)
-#define mplinfo(args...)  // if (showinfo) printf("[MPL::info] " args)
+#define mplinfo_(args...) //if (showinfo) printf(args)
+#define mplinfo(args...)  //if (showinfo) printf("[MPL::info] " args)
 #define mplwarn(args...) printf("[MPL::warn] " args)
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
 
 #define _read_time(t) \
     if (timerel < 3) { \
-        t = last_time + timerel; \
+        t = last_time + timerel; if (in.debugging) printf("timerel=%d\n", timerel); \
     } else { \
         uint64_t r; \
         in >> VARINT(r); \
+        if (in.debugging) printf("timerel=%d, read varint %llu\n", timerel, r); \
         t = last_time + r; \
     }
 
 #define read_cmd_time(u8, cmd, known, timerel, time) do {\
         in >> u8;\
-        cmd = (CMD)(u8 & 0x1f);\
-        known = (u8 >> 5) & 1;\
+        cmd = (CMD)(u8 & 0x0f);\
+        known = 0 != (u8 & CMD::TX_KNOWN_BIT_V2);\
         timerel = time_rel_value(u8);\
         _read_time(time);\
     } while(0)
@@ -82,8 +80,11 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
         if (time_rel_value(rel) > 2) {\
             int64_t time = shared_time ? *shared_time : GetTime();\
             uint64_t tfull = uint64_t(time - last_time);\
+            if (in.debugging) printf("timerel=%d, write varint %llu (time=%lld)\n", rel, tfull, time); \
             in << VARINT(tfull);\
             last_time = time;\
+        } else {\
+            last_time += time_rel_value(rel);\
         }\
         sync();\
     } while (0)
@@ -98,6 +99,8 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
             uint64_t tfull = uint64_t(time - last_time);\
             in << VARINT(tfull);\
             last_time = time;\
+        } else {\
+            last_time += time_rel_value(rel);\
         }\
         sync();\
     } while (0)
@@ -156,7 +159,7 @@ mff_rseq<I>::mff_rseq(FILE* fp, bool readonly) : in_fp(fp), in(in_fp, SER_DISK, 
     last_seq = 0;
     nextseq = 1;
     lastflush = GetTime();
-    // out.debugme(true);
+    // in.debugme(true);
     char magic[3];
     if (2 == fread(magic, 1, 2, in_fp)) {
         magic[2] = 0;
@@ -173,7 +176,6 @@ mff_rseq<I>::mff_rseq(FILE* fp, bool readonly) : in_fp(fp), in(in_fp, SER_DISK, 
 template<int I>
 mff_rseq<I>::~mff_rseq() {
     g_rseq_ctr[I] = nullptr;
-    printf("times: %llu 0, %llu 1, %llu remaining\n", zero_times, one_times, other_times);
 }
 
 inline bool get_block(uint256 blockhex, tiny::block& b, uint32_t& height) {
@@ -391,12 +393,13 @@ bool mff_rseq<I>::read_entry() {
             break;
 
         case TX_REC: {
-            // mplinfo("TX_REC(): "); fflush(stdout);
+            mplinfo("TX_REC(): "); fflush(stdout);
             // static std::map<uint64_t,uint256> rec_revmap;
             long pos;
             seq_t seq;
             auto t = std::make_shared<tx>();
             if (known) {
+                mplinfo_("known "); fflush(stdout);
                 pos = ftell(in_fp); // for offset calculation
                 seq = seq_read();
                 uint64_t offset;
@@ -419,6 +422,8 @@ bool mff_rseq<I>::read_entry() {
                 //     }
                 //     printf("command starting at %ld: offset not found. closest is for txid %s but\n- given pos = %llu\n- actual pos = %llu\n", use_start, rec_revmap[closest_pos].ToString().c_str(), offset, closest_pos);
                 // }
+            } else {
+                mplinfo_("unknown "); fflush(stdout);
             }
             long rec_pos = ftell(in_fp);
             serializer.deserialize_tx(in, *t);
@@ -474,7 +479,7 @@ bool mff_rseq<I>::read_entry() {
                     last_seqs.push_back(prevout.get_seq());
                 }
             }
-            // mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
+            mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
             t->location = tx::location_in_mempool;
             if (listener) listener->tx_rec(this, *t);
             break;
@@ -548,8 +553,8 @@ bool mff_rseq<I>::read_entry() {
         }
 
         case TX_INVALID: {
+            // in.debugme(true);
             mplinfo("TX_INVALID(): "); fflush(stdout);
-            // out.debugme(true);
             replacement_seq = 0;
             replacement_txid.SetNull();
             mplinfo_("\n----- invalid deserialization begins -----\n");
@@ -558,12 +563,13 @@ bool mff_rseq<I>::read_entry() {
             seq_t tx_cause(0);
             mplinfo_("--- read_txseq(%d, tx_invalid)\n", known);
             read_txseq_keep(known, tx_invalid, invalidated_txid);
+            mplinfo_("--- tx_invalid = %llu\n", tx_invalid);
             assert(tx_invalid);
             invalidated_seq = tx_invalid;
             last_seqs.push_back(tx_invalid);
             mplinfo_("--- state\n");
             in >> state;
-            bool cause_known = (state >> 6) & 1;
+            bool cause_known = 0 != (state & CMD::TX_KNOWN_BIT_V2);
             state &= 0x1f;
             last_invalid_state = state;
             mplinfo_("--- state = %d (cause_known = %d)\n", state, cause_known);
@@ -597,7 +603,7 @@ bool mff_rseq<I>::read_entry() {
             mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
             mplinfo_("----- tx invalid deserialization ends -----\n");
             if (listener) listener->tx_invalid(this, *txs[tx_invalid], last_invalidated_txhex, txs[tx_invalid]->invalid_reason, replacement_seq ? &txs[replacement_seq]->id : replacement_txid.IsNull() ? nullptr : &replacement_txid);
-            // out.debugme(false);
+            // in.debugme(false);
             break;
         }
 
@@ -743,8 +749,8 @@ void mff_rseq<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
         DTX(tref->hash, "add_entry() %s\n", known ? "offset-known" : "unknown");
         auto t = register_entry(*entry, known);
         DSL(t->seq, "add_entry() unknown\n");
-        bool debugme = known || ftell(in_fp) == 62344248;
-        #define oij(args...) if (debugme) printf(args)
+        // bool debugme = known || ftell(in_fp) == 62344248;
+        #define oij(args...) //if (debugme) printf(args)
         oij("serializing %s tx %s (%llu) at pos %ld\n", known ? "offset-known" : "unknown", tref->hash.ToString().c_str(), t->seq, ftell(in_fp));
         b = prot_v2(CMD::TX_REC, known);
         start(b);
@@ -787,7 +793,7 @@ inline void mff_rseq<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, co
 
 template<int I>
 inline void mff_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause) {
-    // out.debugme(true);
+    // in.debugme(22450 == seq);
     mplinfo("TX_INVALID %s %llu %s [%s]\n", known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(state));
     uint8_t b = prot_v2(CMD::TX_INVALID, known);
     if (known) {
@@ -796,6 +802,8 @@ inline void mff_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t
         tx_freeze(seq);
     }
     start(b);
+    mplinfo_("\n----- invalid serialization begins -----\n");
+    mplinfo_("--- write_txseq(%llu, %s)\n", seq, tref.hash.ToString().c_str());
     write_txref(seq, tref.hash);
     uint8_t v = state | (cause && seqs.count(*cause) ? CMD::TX_KNOWN_BIT_V2 : 0);
     in << v;
@@ -805,7 +813,7 @@ inline void mff_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t
         write_txref(causeseq, *cause);
     }
     in << tref;
-    // out.debugme(false);
+    // in.debugme(false);
 }
 
 template<int I>
