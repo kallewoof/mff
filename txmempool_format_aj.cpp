@@ -62,7 +62,7 @@ void mff_aj::apply_block(std::shared_ptr<block> b) {
     }
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
-        mplwarn("dealing with TX_UNCONF missing bug 20180502153142\n");
+        mplwarn("dealing with BLOCK_UNCONF missing bug 20180502153142\n");
         while (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
             mplinfo("unconfirming block #%u\n", active_chain.height);
             undo_block_at_height(active_chain.height);
@@ -111,7 +111,7 @@ seq_t mff_aj::touched_txid(const uint256& txid, bool count) {
             }
             // i++;
         }
-        if (last_cmd == TX_CONF) {
+        if (last_cmd == BLOCK_CONF) {
             // check last block txid list
             std::shared_ptr<block> tip = active_chain.chain.back();
             for (uint256& u : tip->unknown) {
@@ -126,7 +126,7 @@ seq_t mff_aj::touched_txid(const uint256& txid, bool count) {
     for (seq_t seq : last_seqs) {
         if (txs.count(seq) && txs[seq]->id == txid) return seq;
     }
-    if (last_cmd == TX_CONF) {
+    if (last_cmd == BLOCK_CONF) {
         // l("CONFIRMING BLOCK -- looking for %s\n", txid.ToString().c_str());
         // check last block txid list
         std::shared_ptr<block> tip = active_chain.chain.back();

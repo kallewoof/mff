@@ -132,7 +132,7 @@ int main(int argc, char* const* argv) {
                     // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %llu = %s", x.get_seq(), reader->txs[x.get_seq()]->id.ToString().c_str());
                     // we don't wanna bother with tracking TX_REC for multiple txids so we just break the loop here
                     break;
-                } else if (reader->last_cmd == mff::TX_CONF) {
+                } else if (reader->last_cmd == mff::BLOCK_CONF) {
                     printf(" (%s in #%u=%s)", txid_str(txid).c_str(), reader->active_chain.height, reader->active_chain.chain.size() > 0 ? reader->active_chain.chain.back()->hash.ToString().c_str() : "???");
                 } else if (reader->last_cmd == mff::TX_IN) {
                     printf(" (%s)", txid_str(reader->last_recorded_tx->id).c_str());

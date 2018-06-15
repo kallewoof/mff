@@ -28,15 +28,15 @@ static inline const char* nl() {
 namespace mff {
 
 enum CMD: uint8_t {
-    TIME_SET   = 0x00,
-    TX_REC     = 0x01,
-    TX_IN      = 0x02,
-    TX_CONF    = 0x03,
-    TX_OUT     = 0x04,
-    TX_INVALID = 0x05,
-    TX_UNCONF  = 0x06,
-    CHECKPOINT = 0x07,
-    GAP        = 0x08,
+    TIME_SET     = 0x00,
+    TX_REC       = 0x01,
+    TX_IN        = 0x02,
+    BLOCK_CONF   = 0x03,
+    TX_OUT       = 0x04,
+    TX_INVALID   = 0x05,
+    BLOCK_UNCONF = 0x06,
+    CHECKPOINT   = 0x07,
+    GAP          = 0x08,
 
     TX_KNOWN_BIT_V1 = 0x40,       // 0b0100 0000
     TIME_REL_BIT_V1 = 0x80,       // 0b1000 0000
@@ -52,12 +52,14 @@ inline std::string cmd_str(CMD c) {
         "TIME_SET",
         "TX_REC",
         "TX_IN",
-        "TX_CONF",
+        "BLOCK_CONF",
         "TX_OUT",
         "TX_INVALID",
-        "TX_UNCONF",
+        "BLOCK_UNCONF",
+        "CHECKPOINT",
+        "GAP",
     };
-    return c < 7 ? str[c] : "????";
+    return c < 9 ? str[c] : "????";
 }
 
 typedef uint64_t seq_t;
@@ -271,7 +273,7 @@ struct chain_delegate {
 //     bool known;
 //     int64_t time;
 //     std::shared_ptr<tx> tx; // TX_REC, TX_IN, TX_OUT
-//     std::shared_ptr<block> block_in; // TX_CONF
+//     std::shared_ptr<block> block_in; // BLOCK_CONF
 //     tx::out_reason_enum out_reason;
 //     tx::invalid_reason_enum invalid_reason;
 //     bool invalid_cause_known;

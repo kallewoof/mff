@@ -245,7 +245,7 @@ void mff_simpletime_rseq<I>::apply_block(std::shared_ptr<block> b) {
     // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
-        mplwarn("dealing with TX_UNCONF missing bug 20180502153142\n");
+        mplwarn("dealing with BLOCK_UNCONF missing bug 20180502153142\n");
         while (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
             mplinfo("unconfirming block #%u\n", active_chain.height);
             undo_block_at_height(active_chain.height);
@@ -329,7 +329,7 @@ seq_t mff_simpletime_rseq<I>::touched_txid(const uint256& txid, bool count) {
             }
             // i++;
         }
-        if (last_cmd == TX_CONF) {
+        if (last_cmd == BLOCK_CONF) {
             // check last block txid list
             std::shared_ptr<block> tip = active_chain.chain.back();
             for (uint256& u : tip->unknown) {
@@ -344,7 +344,7 @@ seq_t mff_simpletime_rseq<I>::touched_txid(const uint256& txid, bool count) {
     for (seq_t seq : last_seqs) {
         if (txs.count(seq) && txs[seq]->id == txid) return seq;
     }
-    if (last_cmd == TX_CONF) {
+    if (last_cmd == BLOCK_CONF) {
         // l("CONFIRMING BLOCK -- looking for %s\n", txid.ToString().c_str());
         // check last block txid list
         std::shared_ptr<block> tip = active_chain.chain.back();
@@ -514,8 +514,8 @@ bool mff_simpletime_rseq<I>::read_entry() {
             break;
         }
 
-        case TX_CONF: {
-            // l1("TX_CONF(%s): ", known ? "known" : "unknown");
+        case BLOCK_CONF: {
+            // l1("BLOCK_CONF(%s): ", known ? "known" : "unknown");
             if (known) {
                 // we know the block; just get the header info and find it, then apply
                 block b(known);
@@ -616,8 +616,8 @@ bool mff_simpletime_rseq<I>::read_entry() {
             break;
         }
 
-        case TX_UNCONF: {
-            mplinfo("TX_UNCONF(): "); fflush(stdout);
+        case BLOCK_UNCONF: {
+            mplinfo("BLOCK_UNCONF(): "); fflush(stdout);
             uint32_t height;
             in >> height;
             if (known) {
@@ -844,7 +844,7 @@ void mff_simpletime_rseq<I>::remove_entry(std::shared_ptr<const tiny::mempool_en
         // TX_INVALID(STATE=2)
         return tx_invalid(known, seq, t, tref, tx::invalid_reorg, cause);
     case tiny::MemPoolRemovalReason::BLOCK:     //! Removed for block
-        // TX_CONF
+        // BLOCK_CONF
         if (known) {
             DSL(seq, "confirmed in block (known)\n");
             DTX(tref.hash, "confirmed in block (known)\n");
@@ -885,7 +885,7 @@ void mff_simpletime_rseq<I>::push_block(int height, uint256 hash, const std::vec
     std::shared_ptr<block> blk;
     while (active_chain.chain.size() > 0 && height < active_chain.height + 1) {
         mplinfo("unconfirming block #%u\n", active_chain.height);
-        b = prot(CMD::TX_UNCONF, true);
+        b = prot(CMD::BLOCK_UNCONF, true);
         start(b);
         in << active_chain.height;
         undo_block_at_height(active_chain.height);
@@ -902,14 +902,14 @@ void mff_simpletime_rseq<I>::push_block(int height, uint256 hash, const std::vec
         // known block
         blk = blocks[hash];
         blk->is_known = true;
-        b = prot(CMD::TX_CONF, true);
+        b = prot(CMD::BLOCK_CONF, true);
     } else {
         // unknown block
         blk = std::make_shared<block>(height, hash);
         blk->count_known = pending_conf_known.size();
         blk->known = pending_conf_known;
         blk->unknown = pending_conf_unknown;
-        b = prot(CMD::TX_CONF, false);
+        b = prot(CMD::BLOCK_CONF, false);
         blocks[hash] = blk;
     }
     assert(blk->height == height);

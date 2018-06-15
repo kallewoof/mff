@@ -96,7 +96,7 @@ mff_rs::mff_rs(const std::string path, bool readonly) : in_fp(setup_file(path.le
 void mff_rs::apply_block(std::shared_ptr<block> b) {
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
-        mplwarn("dealing with TX_UNCONF missing bug 20180502153142\n");
+        mplwarn("dealing with BLOCK_UNCONF missing bug 20180502153142\n");
         while (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
             mplinfo("unconfirming block #%u\n", active_chain.height);
             undo_block_at_height(active_chain.height);
@@ -155,7 +155,7 @@ seq_t mff_rs::touched_txid(const uint256& txid, bool count) {
             }
             // i++;
         }
-        if (last_cmd == TX_CONF) {
+        if (last_cmd == BLOCK_CONF) {
             // check last block txid list
             std::shared_ptr<block> tip = active_chain.chain.back();
             for (uint256& u : tip->unknown) {
@@ -170,7 +170,7 @@ seq_t mff_rs::touched_txid(const uint256& txid, bool count) {
     for (seq_t seq : last_seqs) {
         if (txs.count(seq) && txs[seq]->id == txid) return seq;
     }
-    if (last_cmd == TX_CONF) {
+    if (last_cmd == BLOCK_CONF) {
         // l("CONFIRMING BLOCK -- looking for %s\n", txid.ToString().c_str());
         // check last block txid list
         std::shared_ptr<block> tip = active_chain.chain.back();
@@ -255,8 +255,8 @@ bool mff_rs::read_entry() {
             break;
         }
 
-        case TX_CONF: {
-            // l1("TX_CONF(%s): ", known ? "known" : "unknown");
+        case BLOCK_CONF: {
+            // l1("BLOCK_CONF(%s): ", known ? "known" : "unknown");
             if (known) {
                 // we know the block; just get the header info and find it, then apply
                 block b(known);
@@ -347,8 +347,8 @@ bool mff_rs::read_entry() {
             break;
         }
 
-        case TX_UNCONF: {
-            mplinfo("TX_UNCONF(): "); fflush(stdout);
+        case BLOCK_UNCONF: {
+            mplinfo("BLOCK_UNCONF(): "); fflush(stdout);
             uint32_t height;
             in >> height;
             if (known) {
