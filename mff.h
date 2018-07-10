@@ -13,6 +13,7 @@
 #include <utiltime.h>
 #include <tinymempool.h>
 #include <streams.h>
+#include <tinyformat.h>
 
 extern bool mff_piping;
 extern bool needs_newline;

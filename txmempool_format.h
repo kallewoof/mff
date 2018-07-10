@@ -64,6 +64,9 @@ public:
         Serialize(s, VARINT(t.weight));
         DEBUG_SER("- fee: %llu\n", t.fee);                  // 34   48
         Serialize(s, VARINT(t.fee));
+        if (t.fee > 100000000ULL) {
+            fprintf(stderr, "unusually high fee %llu for txid %s\n", t.fee, t.id.ToString().c_str());
+        }
         DEBUG_SER("- inputs: %llu\n", t.inputs);            // 35   50
         Serialize(s, VARINT(t.inputs));
         for (uint64_t i = 0; i < t.inputs; ++i) {
@@ -91,6 +94,9 @@ public:
         DEBUG_SER("- weight: %llu\n", t.weight);
         Unserialize(s, VARINT(t.fee));
         DEBUG_SER("- fee: %llu\n", t.fee);
+        if (t.fee > 100000000ULL) {
+            fprintf(stderr, "unusually high fee %llu for txid %s\n", t.fee, t.id.ToString().c_str());
+        }
         Unserialize(s, VARINT(t.inputs));
         DEBUG_SER("- inputs: %llu\n", t.inputs);
         t.state.resize(t.inputs);

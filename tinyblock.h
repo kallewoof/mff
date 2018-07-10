@@ -6,10 +6,6 @@
 #define BITCOIN_TINYBLOCK_H
 
 #include <uint256.h>
-#include <serialize.h>
-#include <tinyformat.h>
-#include <utilstrencodings.h>
-#include <hash.h>
 #include <tinytx.h>
 
 namespace tiny {
@@ -22,6 +18,7 @@ struct block_header {
     uint32_t bits = 0;
     uint32_t nonce = 0;
 
+#ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -33,23 +30,22 @@ struct block_header {
         READWRITE(bits);
         READWRITE(nonce);
     }
+#endif
 
+#ifndef TINY_NOHASH
     uint256 GetHash() const
     {
         return SerializeHash(*this);
     }
+#endif
 };
 
 struct block: public block_header {
     std::vector<tx> vtx;
     block() {}
     block(const block_header& header) : block_header(header) {}
-    // CBlock(const CBlockHeader &header)
-    // {
-    //     SetNull();
-    //     *(static_cast<CBlockHeader*>(this)) = header;
-    // }
 
+#ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -57,6 +53,7 @@ struct block: public block_header {
         READWRITEAS(block_header, *this);
         READWRITE(vtx);
     }
+#endif
 };
 
 } // namespace tiny

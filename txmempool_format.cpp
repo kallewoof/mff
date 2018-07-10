@@ -226,7 +226,7 @@ void mff_rseq<I>::apply_block(std::shared_ptr<block> b) {
             assert(!"block missing transactions");
         }
         // printf("block %u ok\n", b->height);
-    } else printf("block %u not checked (block data missing)\n", b->height);
+    } // else printf("block %u not checked (block data missing)\n", b->height);
     // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
@@ -443,7 +443,11 @@ bool mff_rseq<I>::read_entry() {
             }
             DSL(t->seq, "TX_REC\n");
             if (txs.count(t->seq)) {
-                printf("force-thawing %llu as it is being replaced!\n", t->seq);
+                if (t->id != txs[t->seq]->id) {
+                    printf("force-thawing %llu as it is being replaced!!!!!!!!\n", t->seq);
+                    printf("previous:\n%s\n", txs[t->seq]->to_string().c_str());
+                    printf("next:\n%s\n", t->to_string().c_str());
+                }
                 tx_thaw(t->seq); // this removes the tx from chill/freeze lists
                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
             }

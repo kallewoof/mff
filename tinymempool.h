@@ -6,11 +6,11 @@
 #define BITCOIN_TINYMEMPOOL_H
 
 #include <uint256.h>
-#include <serialize.h>
-#include <tinyformat.h>
-#include <utilstrencodings.h>
-#include <hash.h>
 #include <tinytx.h>
+
+#ifndef TINY_NOSERIALIZE
+#include <serialize.h>
+#endif
 
 namespace tiny {
 
@@ -37,6 +37,7 @@ struct mempool_entry {
     mempool_entry(std::shared_ptr<tx> x_in, uint64_t in_sum_in)
     : x(x_in), in_sum(in_sum_in) {}
 
+#ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -54,6 +55,7 @@ struct mempool_entry {
         }
         s >> *xp >> VARINT(in_sum);
     }
+#endif
 
     bool operator==(const mempool_entry& other) const       {
         if (debug_ancestry) printf("mempool_entry::operator==(const mempool_entry& other) const: this=%p, other=%p, x=%p, other.x=%p, x==other.x ? %d, *x==*other.x ? %d\n", this, &other, x.get(), other.x.get(), x == other.x, *x == *other.x);
@@ -75,9 +77,11 @@ struct mempool_entry {
         }
         return fee;
     }
+#ifndef TINY_NOSERIALIZE
     double feerate() const {
         return (double)fee() / x->GetWeight();
     }
+#endif
 };
 
 class mempool_callback {
@@ -127,6 +131,7 @@ public:
      */
     bool is_tx_conflicting(std::shared_ptr<tx> tx);
 
+#ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -156,6 +161,7 @@ public:
         }
         printf("(%zu entries in mempool, %zu ancestry records)\n", entry_map.size(), ancestry.size());
     }
+#endif
 };
 
 }

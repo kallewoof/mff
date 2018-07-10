@@ -3,6 +3,7 @@
 #include <txmempool_format.h>
 #include <cliargs.h>
 #include <tinytx.h>
+#include <hash.h>
 
 std::string time_string(int64_t time) {
     char buf[128];
@@ -13,15 +14,23 @@ std::string time_string(int64_t time) {
 
 typedef std::string (*txid_str_f)(const uint256& txid);
 
+static std::set<uint256> seen;
+
 std::string txid_long(const uint256& txid) { return txid.ToString(); }
 
 std::string txid_short(const uint256& txid) {
-    static std::set<uint256> seen;
     if (seen.find(txid) == seen.end()) {
         seen.insert(txid);
         return txid_long(txid);
     }
     return txid.ToString().substr(0, 10);
+}
+std::string hash_once(const uint256& hash, const std::string& prefix = "") {
+    if (seen.find(hash) == seen.end()) {
+        seen.insert(hash);
+        return prefix + txid_long(hash);
+    }
+    return "";
 }
 txid_str_f txid_str = txid_short;
 
@@ -133,7 +142,7 @@ int main(int argc, char* const* argv) {
                     // we don't wanna bother with tracking TX_REC for multiple txids so we just break the loop here
                     break;
                 } else if (reader->last_cmd == mff::BLOCK_CONF) {
-                    printf(" (%s in #%u=%s)", txid_str(txid).c_str(), reader->active_chain.height, reader->active_chain.chain.size() > 0 ? reader->active_chain.chain.back()->hash.ToString().c_str() : "???");
+                    printf(" (%s in #%u%s)", txid_str(txid).c_str(), reader->active_chain.height, reader->active_chain.chain.size() > 0 ? hash_once(reader->active_chain.chain.back()->hash, "=").c_str() : "???");
                 } else if (reader->last_cmd == mff::TX_IN) {
                     printf(" (%s)", txid_str(reader->last_recorded_tx->id).c_str());
                 }
@@ -142,10 +151,13 @@ int main(int argc, char* const* argv) {
             count = false;
         }
         entries++;
-        nooutputiters++;
-        if (nooutputiters > 10000) {
-            printf("%s\r", time_string(reader->last_time).c_str());
-            fflush(stdout);
+        if (!mff_piping) {
+            nooutputiters++;
+            if (nooutputiters > 10000) {
+                nooutputiters = 0;
+                printf("%s\r", time_string(reader->last_time).c_str());
+                fflush(stdout);
+            }
         }
     } while (reader->read_entry());
     printf("%s: ----log ends----\n", time_string(reader->last_time).c_str());
@@ -159,7 +171,7 @@ int main(int argc, char* const* argv) {
         }
     }
     uint64_t total = (uint64_t)reader->tell();
-    uint64_t counted = total;
+    uint64_t counted = total - 2; // magic number
     for (auto& x : reader->space_usage) {
         counted -= x.second;
         printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);

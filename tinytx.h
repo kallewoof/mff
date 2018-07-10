@@ -6,15 +6,38 @@
 #define BITCOIN_TINYTX_H
 
 #include <uint256.h>
-#include <serialize.h>
-#include <tinyformat.h>
-#include <utilstrencodings.h>
-#include <hash.h>
+
+#ifdef TINY_MINIMAL
+#   define TINY_NOSERIALIZE
+#   define TINY_NOUTILSTRENC
+#   define TINY_NOHASH
+#endif
+
+#ifndef TINY_NOSERIALIZE
+#   include <serialize.h>
+#endif
+
+#ifndef TINY_NOUTILSTRENC
+#   include <utilstrencodings.h>
+#endif
+
+#ifndef TINY_NOHASH
+#   include <hash.h>
+#   ifdef TINY_NOSERIALIZE
+#       error tiny hashes require serialization (disable TINY_NOSERIALIZE)
+#   endif
+#endif
 
 namespace tiny {
 
 typedef int64_t amount;
 static const amount COIN = 100000000;
+
+inline std::string coin_str(amount sat) {
+    char buf[128];
+    char* pbuf = buf + sprintf(buf, "%lld.%08lld", sat / COIN, sat % COIN);
+    return std::string(buf, pbuf);
+}
 
 static const int SERIALIZE_TRANSACTION_NO_WITNESS = 0x40000000;
 
@@ -24,6 +47,7 @@ struct outpoint {
     outpoint() : n((uint32_t)-1) {}
     outpoint(const uint256& hash_in, uint32_t n_in) : hash(hash_in), n(n_in) {}
 
+#ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -31,13 +55,14 @@ struct outpoint {
         READWRITE(hash);
         READWRITE(n);
     }
+#endif
 
     bool IsNull() const { return (hash.IsNull() && n == (uint32_t) -1); }
 
     bool operator==(const outpoint& other) const { return hash == other.hash && n == other.n; }
     bool operator<(const outpoint& other) const { return hash < other.hash || (hash == other.hash && n < other.n); }
 
-    std::string ToString() const { return strprintf("outpoint(%s, %u)", hash.ToString().substr(0,10), n); }
+    std::string ToString() const { return "outpoint(" + hash.ToString().substr(0,10) + ", " + std::to_string(n) + ")"; }
 };
 
 typedef std::vector<uint8_t> script_data_t;
@@ -59,6 +84,7 @@ struct txin {
         sequence = sequence_in;
     }
 
+#ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -67,7 +93,9 @@ struct txin {
         READWRITE(scriptSig);
         READWRITE(sequence);
     }
+#endif
 
+#ifndef TINY_NOUTILSTRENC
     std::string scriptWitString() const {
         std::string ret = "scriptWit(";
         for (unsigned int i = 0; i < scriptWit.size(); i++) {
@@ -78,18 +106,21 @@ struct txin {
         }
         return ret + ")";
     }
+#endif
 
     std::string ToString() const {
         std::string str;
         str += "txin(";
         str += prevout.ToString();
+#ifndef TINY_NOUTILSTRENC
         if (prevout.IsNull()) {
-            str += strprintf(", coinbase %s", HexStr(scriptSig));
+            str += ", coinbase " + HexStr(scriptSig);
         } else {
-            str += strprintf(", scriptSig=%s", HexStr(scriptSig).substr(0, 24));
+            str += ", scriptSig=" + HexStr(scriptSig).substr(0, 24);
         }
+#endif
         if (sequence != SEQUENCE_FINAL) {
-            str += strprintf(", sequence=%u", sequence);
+            str += ", sequence=" + std::to_string(sequence);
         }
         str += ")";
         return str;
@@ -103,6 +134,7 @@ struct txout {
     txout() : value(-1) {}
     txout(const amount& value_in, script_data_t scriptPubKey_in) : value(value_in), scriptPubKey(scriptPubKey_in) {}
 
+#ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -110,9 +142,14 @@ struct txout {
         READWRITE(value);
         READWRITE(scriptPubKey);
     }
+#endif
 
     std::string ToString() const { 
-        return strprintf("txout(value=%d.%08d, scriptPubKey=%s)", value / COIN, value % COIN, HexStr(scriptPubKey).substr(0, 30));
+#ifndef TINY_NOUTILSTRENC
+        return "txout(value=" + coin_str(value) + ", scriptPubKey=" + HexStr(scriptPubKey).substr(0, 30) + ")";
+#else
+        return "txout(value=" + coin_str(value) + ")";
+#endif
     }
 };
 
@@ -149,9 +186,11 @@ struct tx {
         return a.hash == b.hash;
     }
 
+#ifndef TINY_NOHASH
     void UpdateHash() {
         hash = SerializeHash(*this, SER_GETHASH, SERIALIZE_TRANSACTION_NO_WITNESS);
     }
+#endif
 
     bool HasWitness() const
     {
@@ -168,6 +207,7 @@ struct tx {
         return (vin.size() == 1 && vin[0].prevout.IsNull());
     }
 
+#ifndef TINY_NOSERIALIZE
     template<typename Stream>
     inline void Unserialize(Stream& s) {
         const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
@@ -201,7 +241,9 @@ struct tx {
             throw std::ios_base::failure("Unknown transaction optional data");
         }
         s >> locktime;
+#ifndef TINY_NOHASH
         UpdateHash();
+#endif
     }
 
     template<typename Stream>
@@ -235,16 +277,13 @@ struct tx {
 
     std::string ToString() const {
         std::string str;
-        str += strprintf("tx(hash=%s, ver=%d, vin.size=%u, vout.size=%u, locktime=%u)\n",
-            hash.ToString().substr(0,10),
-            version,
-            vin.size(),
-            vout.size(),
-            locktime);
+        str += "tx(hash=" + hash.ToString().substr(0,10) + ", ver=" + std::to_string(version) + ", vin.size=" + std::to_string(vin.size()) + ", vout.size=" + std::to_string(vout.size()) + ", locktime=" + std::to_string(locktime) + ")\n";
         for (const auto& tx_in : vin)
             str += "    " + tx_in.ToString() + "\n";
+#ifndef TINY_NOUTILSTRENC
         for (const auto& tx_in : vin)
             str += "    " + tx_in.scriptWitString() + "\n";
+#endif
         for (const auto& tx_out : vout)
             str += "    " + tx_out.ToString() + "\n";
         return str;
@@ -254,6 +293,7 @@ struct tx {
         #define WITNESS_SCALE_FACTOR 4
         return GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION);
     }
+#endif
 };
 
 }
