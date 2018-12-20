@@ -35,10 +35,10 @@ int64_t GetMockTime()
     return nMockTime.load(std::memory_order_relaxed);
 }
 
-int64_t GetSystemTimeInSeconds()
-{
-    return GetTimeMicros()/1000000;
-}
+// int64_t GetSystemTimeInSeconds()
+// {
+//     return GetTimeMicros()/1000000;
+// }
 
 std::string FormatISO8601DateTime(int64_t nTime) {
     struct tm ts;
