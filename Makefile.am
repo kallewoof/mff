@@ -67,8 +67,8 @@ mff_reader_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 mff_reader_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
 
 mff_reader_LDADD = \
-	$(LIBBITCOIN) \
-    $(LIBMFF)
+    $(LIBMFF) \
+    $(LIBBITCOIN)
 
 # mff-conv binary #
 mff_conv_SOURCES = \
@@ -91,8 +91,8 @@ mff_conv_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 mff_conv_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
 
 mff_conv_LDADD = \
-	$(LIBBITCOIN) \
-    $(LIBMFF)
+    $(LIBMFF) \
+    $(LIBBITCOIN)
 
 clean-local:
 	-rm -f config.h $(LIBBITCOIN)
@@ -111,4 +111,3 @@ endif
 %.pb.cc %.pb.h: %.proto
 	@test -f $(PROTOC)
 	$(AM_V_GEN) $(PROTOC) --cpp_out=$(@D) --proto_path=$(<D) $<
-
