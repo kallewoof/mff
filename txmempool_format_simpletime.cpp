@@ -37,8 +37,6 @@ static const uint256 debug_txid = DEBUG_TXID;
 #define DSL(s, fmt...)
 #endif
 
-uint64_t skipped_recs = 0;
-
 namespace mff {
 
 simpletime_rseq_container* g_simpletime_rseq_ctr[MAX_RSEQ_CONTAINERS];
@@ -1212,7 +1210,7 @@ inline void mff_simpletime_rseq<I>::update_queues() {
     }
 
     // uint32_t frozen_purge_height = height - 100;
-    // 
+    //
     // for (uint32_t h = frozen_purge_height; h <= height; ++h) {
     //     size_t f = frozen_queue.count(h) ? frozen_queue[h].size() : 0;
     //     size_t c = chilled_queue.count(h) ? chilled_queue[h].size() : 0;
