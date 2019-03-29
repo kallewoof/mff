@@ -71,6 +71,7 @@ struct mempool_entry {
     }
 
     uint64_t fee() const {
+        if (x->IsCoinBase()) return 0;
         uint64_t fee = in_sum;
         for (const auto& vout : x->vout) {
             fee -= vout.value;
@@ -79,6 +80,7 @@ struct mempool_entry {
     }
 #ifndef TINY_NOSERIALIZE
     double feerate() const {
+        if (x->IsCoinBase()) return 0;
         return (double)fee() / x->GetWeight();
     }
 #endif

@@ -1203,7 +1203,7 @@ inline void mff_rseq<I>::update_queues() {
     }
 
     // uint32_t frozen_purge_height = height - 100;
-    // 
+    //
     // for (uint32_t h = frozen_purge_height; h <= height; ++h) {
     //     size_t f = frozen_queue.count(h) ? frozen_queue[h].size() : 0;
     //     size_t c = chilled_queue.count(h) ? chilled_queue[h].size() : 0;

@@ -66,6 +66,7 @@ public:
         Serialize(s, VARINT(t.fee));
         if (t.fee > 100000000ULL) {
             fprintf(stderr, "unusually high fee %llu for txid %s\n", t.fee, t.id.ToString().c_str());
+            fprintf(stderr, "tx = %s\n", t.to_string().c_str());
         }
         DEBUG_SER("- inputs: %llu\n", t.inputs);            // 35   50
         Serialize(s, VARINT(t.inputs));

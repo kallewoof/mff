@@ -88,7 +88,7 @@ public:
         state_confirmed = 2,
         state_coinbase  = 3,
     };
-    
+
     outpoint(bool known_in = false)                 : known(known_in), n(0),    seq(0),      txid(uint256()) {}
     outpoint(uint64_t n_in, seq_t seq_in)           : known(true),     n(n_in), seq(seq_in), txid(uint256()) {}
     outpoint(uint64_t n_in, const uint256& txid_in) : known(false),    n(n_in), seq(0),      txid(txid_in)   {}
@@ -184,6 +184,7 @@ struct tx {
         }
         return false;
     }
+
     std::string to_string() const {
         std::string s = strprintf("tx(%s):", id.ToString());
         for (uint64_t i = 0; i < inputs; i++) {
@@ -415,7 +416,7 @@ public:
         txs[t2->seq] = t2;
         return t2;
     }
-    
+
     std::shared_ptr<block> import_block(seqdict_server* server, const block& blk) {
         std::shared_ptr<block> blk2 = std::make_shared<block>(blk);
         // convert the known vector
