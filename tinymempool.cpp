@@ -13,22 +13,34 @@ typename T::const_iterator find_shared_entry(const T& v, const std::shared_ptr<c
     });
 }
 
+// static int depth = 0;
+// struct entrypoint {
+//     entrypoint() { ++depth; }
+//     ~entrypoint() { --depth; }
+// };
+// inline bool check() { return depth == 1; }
+
 void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
+    // printf("*** insert %s ***\n", x->ToString().c_str());
+    // entrypoint _e;
     // avoid duplicate insertions
     if (entry_map.count(x->hash)) return;
 
     // find and evict transactions that conflict with x
     std::set<std::shared_ptr<const mempool_entry>> evictees;
     if (!x->IsCoinBase()) {
+        // printf("- locating evictees\n");
         for (const auto& in : x->vin) {
             bool found = false;
             auto prevout = in.prevout;
+            // printf("  - prevout %s %s\n", prevout.hash.ToString().c_str(), ancestry.count(prevout.hash) ? "found" : "not found");
             if (ancestry.count(prevout.hash)) {
                 for (const auto& candidate : ancestry[prevout.hash]) {
                     for (const auto& c_in : candidate->x->vin) {
                         auto c_prevout = c_in.prevout;
                         if (c_prevout.hash == prevout.hash && c_prevout.n == prevout.n) {
                             // found a match
+                            // printf("  - evicting %s\n", candidate->x->hash.ToString().c_str());
                             assert(candidate->x->hash != x->hash);
                             evictees.insert(candidate);
                             found = true;
@@ -43,25 +55,31 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
 
     // fetch input amounts
     uint64_t in_sum = 0;
+    bool unknown_inputs = false;
     if (!x->IsCoinBase()) {
         for (const auto& in : x->vin) {
             if (entry_map.count(in.prevout.hash)) {
                 in_sum += entry_map[in.prevout.hash]->x->vout[in.prevout.n].value;
             } else {
-                in_sum += amap::output_amount(in.prevout.hash, in.prevout.n);
+                auto a = amap::output_amount(in.prevout.hash, in.prevout.n);
+                if (a == -1) {
+                    unknown_inputs = true;
+                    break;
+                }
+                in_sum += a;
             }
         }
     }
 
     // create new entry
-    std::shared_ptr<const mempool_entry> entry = std::make_shared<const mempool_entry>(x, in_sum);
+    std::shared_ptr<const mempool_entry> entry = std::make_shared<const mempool_entry>(x, in_sum, unknown_inputs);
     entry_map[x->hash] = entry;
 
     // perform evictions
     for (const auto& e : evictees) {
         remove_entry(e, determine_reason(entry, e), x);
     }
-    
+
     // link ancestry
     if (!x->IsCoinBase()) {
         for (const auto& in : x->vin) {
@@ -71,19 +89,42 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
 
     if (callback) {
         callback->add_entry(entry);
+        if (!x->IsCoinBase() && entry->fee() > 100000000ULL) {
+            fprintf(stderr, "unusually high fee for transaction: %s\n", x->ToString().c_str());
+        }
     }
 
     if (!retain) {
         // enqueue for potential removal
         enqueue(entry);
     }
+
+    // if (check() && entry_map.size() > 0) {
+    //     // assert validity
+    //     std::set<uint256> inputs;
+    //     uint32_t max_ins = 0;
+    //     uint64_t sum_ins = 0;
+    //     for (const auto& e : entry_map) {
+    //         if (e.second->x->vin.size() > max_ins) max_ins = e.second->x->vin.size();
+    //         sum_ins += e.second->x->vin.size();
+    //         for (const auto& vin : e.second->x->vin) {
+    //             assert(!vin.prevout.IsNull());
+    //             inputs.insert(vin.prevout.hash);
+    //         }
+    //     }
+    //     printf("ancestry size = %zu, inputs size = %zu; max inputs = %u; tx count = %zu, input sum = %llu, avg in/tx = %.2f\n", ancestry.size(), inputs.size(), max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
+    //     assert(ancestry.size() == inputs.size());
+    // }
 }
 
 void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRemovalReason reason, std::shared_ptr<tx> cause) {
+    // printf("*** remove %s ***\n", entry->x->ToString().c_str());
+    // entrypoint _e;
     if (!entry_map.count(entry->x->hash)) return;
 
     if (reason != MemPoolRemovalReason::BLOCK) {
         // evict any tx dependent on x
+        // printf("- remove dependent transactions\n");
         while (ancestry.count(entry->x->hash)) {
             remove_entry(ancestry[entry->x->hash].back(), reason, cause);
         }
@@ -95,10 +136,11 @@ void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRe
 
     // unlink ancestry
     if (!entry->x->IsCoinBase()) {
+        // printf("- unlinking ancestry\n");
         for (const auto& in : entry->x->vin) {
             assert(ancestry.count(in.prevout.hash));
             auto it = find_shared_entry(ancestry[in.prevout.hash], entry);
-            //  std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(), 
+            //  std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(),
             // [entry](std::shared_ptr<const mempool_entry> const& e) {
             //     return *e == *entry;
             // });
@@ -106,7 +148,7 @@ void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRe
                 printf("cannot find %s in ancestry[%s]:\n", entry->x->hash.ToString().c_str(), in.prevout.hash.ToString().c_str());
                 debug_ancestry = true;
                 find_shared_entry(ancestry[in.prevout.hash], entry);
-                // std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(), 
+                // std::find_if(ancestry[in.prevout.hash].begin(), ancestry[in.prevout.hash].end(),
                 // [entry](std::shared_ptr<const mempool_entry> const& e) {
                 //     return *e == *entry;
                 // });
@@ -119,6 +161,7 @@ void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRe
             assert(it != ancestry[in.prevout.hash].end());
             ancestry[in.prevout.hash].erase(it);
             if (ancestry[in.prevout.hash].size() == 0) {
+                // printf("  - ancestry for %s is cleared out, erasing\n", in.prevout.hash.ToString().c_str());
                 ancestry.erase(in.prevout.hash);
             }
         }
@@ -132,9 +175,27 @@ void mempool::remove_entry(std::shared_ptr<const mempool_entry> entry, MemPoolRe
     if (it != entry_queue.end()) {
         entry_queue.erase(it);
     }
+
+    // if (check() && entry_map.size() > 0) {
+    //     // assert validity
+    //     std::set<uint256> inputs;
+    //     uint32_t max_ins = 0;
+    //     uint64_t sum_ins = 0;
+    //     for (const auto& e : entry_map) {
+    //         if (e.second->x->vin.size() > max_ins) max_ins = e.second->x->vin.size();
+    //         sum_ins += e.second->x->vin.size();
+    //         for (const auto& vin : e.second->x->vin) {
+    //             inputs.insert(vin.prevout.hash);
+    //         }
+    //     }
+    //     printf("ancestry size = %zu, inputs size = %zu; max inputs = %u; tx count = %zu, input sum = %llu, avg in/tx = %.2f\n", ancestry.size(), inputs.size(), max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
+    //     assert(ancestry.size() == inputs.size());
+    // }
 }
 
 void mempool::process_block(int height, uint256 hash, const std::vector<tx>& txs) {
+    // printf("*** process block %d ***\n", height);
+    // entrypoint _e;
     for (const auto& x : txs) {
         if (!entry_map.count(x.hash)) {
             insert_tx(std::make_shared<tx>(x), true);
@@ -144,6 +205,22 @@ void mempool::process_block(int height, uint256 hash, const std::vector<tx>& txs
         }
     }
     if (callback) callback->push_block(height, hash, txs);
+
+    // if (check() && entry_map.size() > 0) {
+    //     // assert validity
+    //     std::set<uint256> inputs;
+    //     uint32_t max_ins = 0;
+    //     uint64_t sum_ins = 0;
+    //     for (const auto& e : entry_map) {
+    //         if (e.second->x->vin.size() > max_ins) max_ins = e.second->x->vin.size();
+    //         sum_ins += e.second->x->vin.size();
+    //         for (const auto& vin : e.second->x->vin) {
+    //             inputs.insert(vin.prevout.hash);
+    //         }
+    //     }
+    //     printf("ancestry size = %zu, inputs size = %zu; max inputs = %u; tx count = %zu, input sum = %llu, avg in/tx = %.2f\n", ancestry.size(), inputs.size(), max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
+    //     assert(ancestry.size() == inputs.size());
+    // }
 }
 
 void mempool::reorg_block(int height) {

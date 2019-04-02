@@ -31,11 +31,12 @@ enum class MemPoolRemovalReason {
 
 struct mempool_entry {
     std::shared_ptr<const tx> x;
-    uint64_t in_sum;
+    uint64_t in_sum{0};
+    bool unknown_inputs{false};
 
     mempool_entry() {}
-    mempool_entry(std::shared_ptr<tx> x_in, uint64_t in_sum_in)
-    : x(x_in), in_sum(in_sum_in) {}
+    mempool_entry(std::shared_ptr<tx> x_in, uint64_t in_sum_in, bool unknown_inputs_in)
+    : x(x_in), in_sum(in_sum_in), unknown_inputs(unknown_inputs_in) {}
 
 #ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
@@ -43,7 +44,10 @@ struct mempool_entry {
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(x);
-        READWRITE(VARINT(in_sum));
+        READWRITE(unknown_inputs);
+        if (!unknown_inputs) {
+            READWRITE(VARINT(in_sum));
+        }
     }
 
     template <typename Stream>
@@ -53,7 +57,8 @@ struct mempool_entry {
             xp = new tx();
             x.reset(xp);
         }
-        s >> *xp >> VARINT(in_sum);
+        s >> *xp >> unknown_inputs;
+        if (!unknown_inputs) s >> VARINT(in_sum);
     }
 #endif
 
@@ -71,7 +76,7 @@ struct mempool_entry {
     }
 
     uint64_t fee() const {
-        if (x->IsCoinBase()) return 0;
+        if (x->IsCoinBase() || unknown_inputs) return 0;
         uint64_t fee = in_sum;
         for (const auto& vout : x->vout) {
             fee -= vout.value;
@@ -80,7 +85,7 @@ struct mempool_entry {
     }
 #ifndef TINY_NOSERIALIZE
     double feerate() const {
-        if (x->IsCoinBase()) return 0;
+        if (x->IsCoinBase() || unknown_inputs) return 0;
         return (double)fee() / x->GetWeight();
     }
 #endif
@@ -150,8 +155,8 @@ public:
                     inputs.insert(vin.prevout.hash);
                 }
             }
+            printf("ancestry size = %zu, inputs size = %zu; max inputs = %u; tx count = %zu, input sum = %llu, avg in/tx = %.2f\n", ancestry.size(), inputs.size(), max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
             assert(ancestry.size() == inputs.size());
-            printf("ancestry size = inputs size; max inputs = %u; tx count = %zu, input sum = %llu, avg in/tx = %.2f\n", max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
         }
         READWRITE(entry_map);
         READWRITE(ancestry);

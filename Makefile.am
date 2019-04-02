@@ -17,7 +17,7 @@ EXTRA_LIBRARIES += \
 
 # lib_LTLIBRARIES = $(LIBBITCOIN)
 
-bin_PROGRAMS = mff-reader mff-conv
+bin_PROGRAMS = mff-reader mff-conv aj2bin
 noinst_PROGRAMS =
 
 .PHONY: FORCE check-symbols check-security
@@ -75,6 +75,7 @@ mff_conv_SOURCES = \
     amap.h \
     amap.cpp \
     mff-conv.cpp \
+	tinyfs.h \
     tinyblock.h \
     tinymempool.h \
     tinymempool.cpp \
@@ -82,6 +83,8 @@ mff_conv_SOURCES = \
     txmempool_format_rs.h \
     txmempool_format_aj.cpp \
     txmempool_format_aj.h \
+	txmempool_format_ajb.cpp \
+    txmempool_format_ajb.h \
     txmempool_format_timetail.h \
     txmempool_format_timetail.cpp \
     txmempool_format_simpletime.h \
@@ -91,6 +94,17 @@ mff_conv_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 mff_conv_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
 
 mff_conv_LDADD = \
+    $(LIBMFF) \
+    $(LIBBITCOIN)
+
+# aj2bin binary #
+aj2bin_SOURCES = \
+	aj2bin.cpp
+aj2bin_CPPFLAGS = $(AM_CPPFLAGS)
+aj2bin_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+aj2bin_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
+
+aj2bin_LDADD = \
     $(LIBMFF) \
     $(LIBBITCOIN)
 

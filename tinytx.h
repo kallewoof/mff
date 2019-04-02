@@ -62,7 +62,7 @@ struct outpoint {
     bool operator==(const outpoint& other) const { return hash == other.hash && n == other.n; }
     bool operator<(const outpoint& other) const { return hash < other.hash || (hash == other.hash && n < other.n); }
 
-    std::string ToString() const { return "outpoint(" + hash.ToString().substr(0,10) + ", " + std::to_string(n) + ")"; }
+    std::string ToString() const { return "outpoint(" + hash.ToString()/*.substr(0,10)*/ + ", " + std::to_string(n) + ")"; }
 };
 
 typedef std::vector<uint8_t> script_data_t;
@@ -82,6 +82,14 @@ struct txin {
         prevout = prevout_in;
         scriptSig = scriptSig_in;
         sequence = sequence_in;
+    }
+
+    friend bool operator==(const txin& a, const txin& b)
+    {
+        return a.prevout == b.prevout
+            && a.scriptSig == b.scriptSig
+            && a.sequence == b.sequence
+            && a.scriptWit == b.scriptWit;
     }
 
 #ifndef TINY_NOSERIALIZE
@@ -134,6 +142,12 @@ struct txout {
     txout() : value(-1) {}
     txout(const amount& value_in, script_data_t scriptPubKey_in) : value(value_in), scriptPubKey(scriptPubKey_in) {}
 
+    friend bool operator==(const txout& a, const txout& b)
+    {
+        return a.value == b.value
+            && a.scriptPubKey == b.scriptPubKey;
+    }
+
 #ifndef TINY_NOSERIALIZE
     ADD_SERIALIZE_METHODS;
 
@@ -144,7 +158,7 @@ struct txout {
     }
 #endif
 
-    std::string ToString() const { 
+    std::string ToString() const {
 #ifndef TINY_NOUTILSTRENC
         return "txout(value=" + coin_str(value) + ", scriptPubKey=" + HexStr(scriptPubKey).substr(0, 30) + ")";
 #else
@@ -184,6 +198,14 @@ struct tx {
     friend bool operator==(const tx& a, const tx& b)
     {
         return a.hash == b.hash;
+    }
+
+    bool verify(const tx& o) const {
+        return vin == o.vin
+            && vout == o.vout
+            && version == o.version
+            && locktime == o.locktime
+            && hash == o.hash;
     }
 
 #ifndef TINY_NOHASH

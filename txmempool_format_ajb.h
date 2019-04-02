@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TXMEMPOOL_FORMAT_AJ_H
-#define BITCOIN_TXMEMPOOL_FORMAT_AJ_H
+#ifndef BITCOIN_TXMEMPOOL_FORMAT_AJB_H
+#define BITCOIN_TXMEMPOOL_FORMAT_AJB_H
 
 #include <mff.h>
 #include <serialize.h>
@@ -13,9 +13,9 @@
 
 namespace mff {
 
-extern std::string aj_rpc_call;
+extern std::string ajb_rpc_call;
 
-class mff_aj: public mff {
+class mff_ajb: public mff {
 private:
     int64_t lastflush;
     FILE* in_fp;
@@ -75,8 +75,8 @@ public:
     std::vector<uint8_t> last_invalidated_txhex; // for TX_INVALID
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
-    mff_aj(const std::string path = "", bool readonly = true);
-    ~mff_aj();
+    mff_ajb(const std::string path = "", bool readonly = true);
+    ~mff_ajb();
 
     bool read_entry() override;
     int64_t peek_time() override;
@@ -90,4 +90,4 @@ public:
 
 } // namespace mff
 
-#endif // BITCOIN_TXMEMPOOL_FORMAT_AJ_H
+#endif // BITCOIN_TXMEMPOOL_FORMAT_AJB_H

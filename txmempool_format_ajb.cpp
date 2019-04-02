@@ -6,8 +6,9 @@
 #include <tinyblock.h>
 #include <unistd.h>
 #include <amap.h>
+#include <tinyfs.h>
 
-#include <txmempool_format_aj.h>
+#include <txmempool_format_ajb.h>
 
 // static mff::seq_t debug_seq = 0;
 // static bool debugging = false;
@@ -21,7 +22,7 @@
 
 namespace mff {
 
-std::string aj_rpc_call = "";
+std::string ajb_rpc_call = "";
 
 // bool showinfo = false;
 #define mplinfo_(args...) // if (showinfo) { printf(args); }
@@ -30,9 +31,9 @@ std::string aj_rpc_call = "";
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
 
 inline FILE* setup_file(const char* path, bool readonly) {
-    FILE* fp = fopen(path, readonly ? "r" : "r+");
+    FILE* fp = fopen(path, readonly ? "rb" : "rb+");
     if (!readonly && fp == nullptr) {
-        fp = fopen(path, "w");
+        fp = fopen(path, "wb");
     }
     if (fp == nullptr) {
         fprintf(stderr, "unable to open %s\n", path);
@@ -41,21 +42,22 @@ inline FILE* setup_file(const char* path, bool readonly) {
     return fp;
 }
 
-mff_aj::mff_aj(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
+mff_ajb::mff_ajb(const std::string path, bool readonly) : in_fp(setup_file(path.length() > 0 ? path.c_str() : (std::string(std::getenv("HOME")) + "/mff.out").c_str(), readonly)), in(in_fp, SER_DISK, 0) {
     nextseq = 1;
     last_seq = 0;
     lastflush = GetTime();
     buffer = (char*)malloc(1024);
     buffer_cap = 1024;
     entry_counter = 0;
+    read_time = 0;
     // out.debugme(true);
     mplinfo("start %s\n", path.c_str());
 }
 
-mff_aj::~mff_aj() {
+mff_ajb::~mff_ajb() {
 }
 
-void mff_aj::apply_block(std::shared_ptr<block> b) {
+void mff_ajb::apply_block(std::shared_ptr<block> b) {
     if (active_chain.chain.size() > 0 && b->hash == active_chain.chain.back()->hash) {
         // we are already on this block
         return;
@@ -83,7 +85,7 @@ void mff_aj::apply_block(std::shared_ptr<block> b) {
     }
 }
 
-void mff_aj::undo_block_at_height(uint32_t height) {
+void mff_ajb::undo_block_at_height(uint32_t height) {
     mplinfo("undo block %u\n", height);
     // we need to unmark confirmed transactions
     assert(height == active_chain.height);
@@ -98,7 +100,7 @@ void mff_aj::undo_block_at_height(uint32_t height) {
     }
 }
 
-seq_t mff_aj::touched_txid(const uint256& txid, bool count) {
+seq_t mff_ajb::touched_txid(const uint256& txid, bool count) {
     // static int calls = 0;calls++;
     if (count) {
         std::set<uint256> counted;
@@ -139,23 +141,24 @@ seq_t mff_aj::touched_txid(const uint256& txid, bool count) {
     return 0;
 }
 
-uint256 mff_aj::get_replacement_txid() const {
+uint256 mff_ajb::get_replacement_txid() const {
     return replacement_seq && txs.count(replacement_seq) ? txs.at(replacement_seq)->id : replacement_txid;
 }
 
-uint256 mff_aj::get_invalidated_txid() const {
+uint256 mff_ajb::get_invalidated_txid() const {
     return invalidated_seq && txs.count(invalidated_seq) ? txs.at(invalidated_seq)->id : invalidated_txid;
 }
 
 /////// RPC
 
-inline FILE* rpc_fetch(const char* cmd, const char* dst, bool abort_on_failure = false) {
-    if (aj_rpc_call == "") {
+inline tiny::File rpc_fetch(const char* cmd, const std::string& dst, bool abort_on_failure = false) {
+    if (ajb_rpc_call == "") {
         assert(!"no RPC call available");
     }
     system(cmd);
-    FILE* fp = fopen(dst, "r");
-    if (!fp) {
+    tiny::File fp = tiny::OpenFile(dst, "r");
+    if (!fp->has_data()) {
+        fp->close();
         fprintf(stderr, "RPC call failed: %s\n", cmd);
         if (!abort_on_failure) {
             fprintf(stderr, "waiting 5 seconds and trying again\n");
@@ -173,104 +176,107 @@ inline void deserialize_hex_string(const char* string, T& object) {
     ds >> object;
 }
 
-bool mff_aj::rpc_get_block(uint32_t height, tiny::block& b, uint256& blockhex) {
+bool mff_ajb::rpc_get_block(uint32_t height, tiny::block& b, uint256& blockhex) {
     std::string dstfinal = "blockdata/" + std::to_string(height) + ".hth";
-    FILE* fp = fopen(dstfinal.c_str(), "rb");
-    if (!fp) {
+    tiny::File fp = tiny::OpenFile(dstfinal, "rb");
+    // FILE* fp = fopen(dstfinal.c_str(), "rb");
+    if (!fp->has_data()) {
         std::string dsttxt = "blockdata/" + std::to_string(height) + ".hth.txt";
-        FILE* fptxt = fopen(dsttxt.c_str(), "r");
-        if (!fptxt) {
-            std::string cmd = aj_rpc_call + " getblockhash " + std::to_string(height) + " > " + dsttxt;
-            fptxt = rpc_fetch(cmd.c_str(), dsttxt.c_str());
+        tiny::File fptxt = tiny::OpenFile(dsttxt, "r");
+        if (!fptxt->has_data()) {
+            std::string cmd = ajb_rpc_call + " getblockhash " + std::to_string(height) + " > " + dsttxt;
+            fptxt = rpc_fetch(cmd.c_str(), dsttxt);
         }
         char hex[128];
-        fscanf(fptxt, "%s", hex);
+        fscanf(fptxt->m_fp, "%s", hex);
         assert(strlen(hex) == 64);
         blockhex = uint256S(hex);
-        fclose(fptxt);
-        fp = fopen(dstfinal.c_str(), "wb");
-        CAutoFile af(fp, SER_DISK, 0);
-        af << blockhex;
+        fptxt->close();
+        fp = tiny::OpenFile(dstfinal, "wb");
+        fp->autofile() << blockhex;
         return rpc_get_block(blockhex, b, height);
     }
-    CAutoFile af(fp, SER_DISK, 0);
-    af >> blockhex;
+    fp->autofile() >> blockhex;
     return rpc_get_block(blockhex, b, height);
 }
 
-bool mff_aj::rpc_get_block(const uint256& blockhex, tiny::block& b, uint32_t& height) {
+bool mff_ajb::rpc_get_block(const uint256& blockhex, tiny::block& b, uint32_t& height) {
     // printf("get block %s\n", blockhex.ToString().c_str());
     std::string dstfinal = "blockdata/" + blockhex.ToString() + ".mffb";
-    FILE* fp = fopen(dstfinal.c_str(), "rb");
-    if (!fp) {
+    tiny::File fp = tiny::OpenFile(dstfinal, "rb");
+    if (!fp->has_data()) {
         std::string dsthex = "blockdata/" + blockhex.ToString() + ".hex";
         std::string dsthdr = "blockdata/" + blockhex.ToString() + ".hdr";
-        FILE* fphex = fopen(dsthex.c_str(), "r");
-        FILE* fphdr = fopen(dsthdr.c_str(), "r");
-        if (!fphex) {
-            std::string cmd = aj_rpc_call + " getblock " + blockhex.ToString() + " 0 > " + dsthex;
-            fphex = rpc_fetch(cmd.c_str(), dsthex.c_str());
+        tiny::File fphex = tiny::OpenFile(dsthex, "r");
+        tiny::File fphdr = tiny::OpenFile(dsthdr, "r");
+        if (!fphex->has_data()) {
+            std::string cmd = ajb_rpc_call + " getblock " + blockhex.ToString() + " 0 > " + dsthex;
+            fphex = rpc_fetch(cmd.c_str(), dsthex);
         }
-        if (!fphdr) {
-            std::string cmd = aj_rpc_call + " getblockheader " + blockhex.ToString() + " > " + dsthdr;
-            fphdr = rpc_fetch(cmd.c_str(), dsthdr.c_str());
+        if (!fphdr->has_data()) {
+            std::string cmd = ajb_rpc_call + " getblockheader " + blockhex.ToString() + " > " + dsthdr;
+            fphdr = rpc_fetch(cmd.c_str(), dsthdr);
         }
-        fclose(fphdr);                                      // closes fphdr
+        fphdr->close();
+        // fclose(fphdr);                                      // closes fphdr
         std::string dstheight = std::string("blockdata/") + blockhex.ToString() + ".height";
         std::string cmd = std::string("cat ") + dsthdr + " | jq -r .height > " + dstheight;
         system(cmd.c_str());
-        fphdr = fopen(dstheight.c_str(), "r");
-        if (fscanf(fphdr, "%u", &height) != 1) {
+        fphdr = tiny::OpenFile(dstheight, "r");
+        if (fscanf(fphdr->m_fp, "%u", &height) != 1) {
             // block is probably an orphan block
             printf("failure to load orphan block %u=%s\n", height, blockhex.ToString().c_str());
             // fprintf(stderr, "UNDETECTED FAILURE: BLOCK=%s\n", blockhex.ToString().c_str());
             return false;
         }
-        fclose(fphdr);                                      // closes fphdr (.height open)
-        fseek(fphex, 0, SEEK_END);
-        size_t sz = ftell(fphex);
-        fseek(fphex, 0, SEEK_SET);
+        fphdr->close();
+        // fclose(fphdr);                                      // closes fphdr (.height open)
+        fseek(fphex->m_fp, 0, SEEK_END);
+        size_t sz = ftell(fphex->m_fp);
+        fseek(fphex->m_fp, 0, SEEK_SET);
         char* blk = (char*)malloc(sz + 1);
         assert(blk);
-        fread(blk, 1, sz, fphex);
-        fclose(fphex);                                      // closes fphex
+        fread(blk, 1, sz, fphex->m_fp);
+        fphex->close();
+        // fclose(fphex);                                      // closes fphex
         blk[sz] = 0;
         std::vector<uint8_t> blkdata = ParseHex(blk);
         free(blk);
-        fp = fopen(dstfinal.c_str(), "wb+");
+        fp = tiny::OpenFile(dstfinal, "wb+");
         // write height
-        fwrite(&height, sizeof(uint32_t), 1, fp);
+        fp->write(height);
+        // fwrite(&height, sizeof(uint32_t), 1, fp);
         // write block
-        fwrite(blkdata.data(), 1, blkdata.size(), fp);
-        fseek(fp, 0, SEEK_SET);
+        fp->write(blkdata);
+        fseek(fp->m_fp, 0, SEEK_SET);
         // unlink
         unlink(dsthex.c_str());
         unlink(dsthdr.c_str());
         unlink(dstheight.c_str());
     }
     // read height
-    fread(&height, sizeof(uint32_t), 1, fp);
+    fp->read(height);
+    // fread(&height, sizeof(uint32_t), 1, fp);
     // deserialize block
-    CAutoFile deserializer(fp, SER_DISK, 0);
-    deserializer >> b;
+    fp->autofile() >> b;
     // deserializer closes fp
     return true;
 }
 
-void mff_aj::rpc_get_tx(const uint256& txhex, tiny::tx& tx, size_t retries) {
+void mff_ajb::rpc_get_tx(const uint256& txhex, tiny::tx& tx, size_t retries) {
     printf("get tx %s\n", txhex.ToString().c_str());
     std::string dstfinal = "txdata/" + txhex.ToString() + ".mfft";
-    FILE* fp = fopen(dstfinal.c_str(), "rb");
-    if (!fp) {
+    tiny::File fp = tiny::OpenFile(dstfinal, "rb");
+    if (!fp->has_data()) {
         std::string dsthex = "txdata/" + txhex.ToString() + ".hex";
-        std::string cmd = aj_rpc_call + " getrawtransaction " + txhex.ToString() + " > " + dsthex;
-        FILE* fphex = fopen(dsthex.c_str(), "r");
-        if (!fphex) {
+        std::string cmd = ajb_rpc_call + " getrawtransaction " + txhex.ToString() + " > " + dsthex;
+        tiny::File fphex = tiny::OpenFile(dsthex, "r");
+        if (!fphex->has_data()) {
             fphex = rpc_fetch(cmd.c_str(), dsthex.c_str());
         }
-        fseek(fphex, 0, SEEK_END);
-        size_t sz = ftell(fphex);
-        fseek(fphex, 0, SEEK_SET);
+        fseek(fphex->m_fp, 0, SEEK_END);
+        size_t sz = ftell(fphex->m_fp);
+        fseek(fphex->m_fp, 0, SEEK_SET);
         if (sz == 0) {
             if (retries == 5) {
                 fprintf(stderr, "failed to fetch tx %s after 5 tries, aborting\n", txhex.ToString().c_str());
@@ -283,25 +289,24 @@ void mff_aj::rpc_get_tx(const uint256& txhex, tiny::tx& tx, size_t retries) {
         }
         char* txhex = (char*)malloc(sz + 1);
         assert(txhex);
-        fread(txhex, 1, sz, fphex);
-        fclose(fphex);                                      // closes fphex
+        fread(txhex, 1, sz, fphex->m_fp);
+        fphex->close();                                      // closes fphex
         txhex[sz] = 0;
         std::vector<uint8_t> txdata = ParseHex(txhex);
         free(txhex);
-        fp = fopen(dstfinal.c_str(), "wb+");
+        fp = tiny::OpenFile(dstfinal, "wb+");
         // write tx
-        fwrite(txdata.data(), 1, txdata.size(), fp);
-        fseek(fp, 0, SEEK_SET);
+        fp->write(txdata);
+        fseek(fp->m_fp, 0, SEEK_SET);
         // unlink
         unlink(dsthex.c_str());
     }
     // deserialize tx
-    CAutoFile deserializer(fp, SER_DISK, 0);
-    deserializer >> tx;
+    fp->autofile() >> tx;
     // deserializer closes fp
 }
 
-tiny::amount mff_aj::rpc_get_tx_input_amount(tiny::tx& tx) {
+tiny::amount mff_ajb::rpc_get_tx_input_amount(tiny::tx& tx) {
     tiny::amount amount = 0;
     tiny::tx tt;
     for (auto& input : tx.vin) {
@@ -313,14 +318,14 @@ tiny::amount mff_aj::rpc_get_tx_input_amount(tiny::tx& tx) {
 
 ///////// AMAP
 
-int64_t mff_aj::amap_get_output_value(const uint256& txid, int n)
+int64_t mff_ajb::amap_get_output_value(const uint256& txid, int n)
 {
     return amap::output_amount(txid, n);
 }
 
 ///////// RPC/AMAP
 
-int64_t mff_aj::get_output_value(const uint256& txid, int n)
+int64_t mff_ajb::get_output_value(const uint256& txid, int n)
 {
     static uint64_t known_count = 0, amap_count = 0, rpc_count = 0, total_count = 0;
     total_count++;
@@ -349,7 +354,7 @@ int64_t mff_aj::get_output_value(const uint256& txid, int n)
     return t.vout[n].value;
 }
 
-int64_t mff_aj::get_tx_input_amount(tiny::tx& tx)
+int64_t mff_ajb::get_tx_input_amount(tiny::tx& tx)
 {
     if (!amap::enabled) return get_tx_input_amount(tx);
 
@@ -360,7 +365,7 @@ int64_t mff_aj::get_tx_input_amount(tiny::tx& tx)
     return amount;
 }
 
-std::shared_ptr<tx> mff_aj::register_tx(tiny::tx& tt) {
+std::shared_ptr<tx> mff_ajb::register_tx(tiny::tx& tt) {
     auto t = std::make_shared<tx>();
     t->id = tt.hash;
     t->seq = nextseq++;
@@ -410,11 +415,11 @@ std::shared_ptr<tx> mff_aj::register_tx(tiny::tx& tt) {
     return t;
 }
 
-void mff_aj::insert(tiny::tx& tt) {
+void mff_ajb::insert(tiny::tx& tt) {
     mempool->insert_tx(std::make_shared<tiny::tx>(tt));
 }
 
-void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
+void mff_ajb::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
     std::shared_ptr<block> blk = std::make_shared<block>();
     blk->height = height;
     while (active_chain.chain.size() > 0 && height < active_chain.height + 1) {
@@ -447,115 +452,68 @@ void mff_aj::confirm(uint32_t height, const uint256& hash, tiny::block& b) {
     active_chain.chain.push_back(blk);
 }
 
-int64_t mff_aj::peek_time() {
+int64_t mff_ajb::peek_time() {
     long csr = ftell(in_fp);
-    // <timestamp> <action> <data...>
-    int64_t timestamp;
-    uint32_t fraction;
-    if (fscanf(in_fp, "%lld.%u", &timestamp, &fraction) != 2) {
-        return 0;
-    }
+    uint64_t diff;
+    in >> VARINT(diff);
+    int64_t timestamp = read_time + diff;
     fseek(in_fp, csr, SEEK_SET);
     return timestamp;
 }
 
-bool mff_aj::read_entry() {
-    // <timestamp> <action> <data...>
-    int64_t timestamp;
-    uint32_t fraction;
-    char action[64];
-    if (fscanf(in_fp, "%lld.%u %s ", &timestamp, &fraction, action) != 3) {
+bool mff_ajb::read_entry() {
+    uint8_t pid;
+    try {
+        uint64_t diff;
+        in >> VARINT(diff) >> pid;
+        read_time += diff;
+        if (shared_time) *shared_time = read_time;
+    } catch (std::ios_base::failure& f) {
         return false;
     }
-
-    if (shared_time) *shared_time = timestamp;
-    read_time = timestamp;
-
-    char* bptr = buffer;
-    size_t rem = buffer_cap;
-    for (;;) {
-        if (!fgets(bptr, rem, in_fp)) {
-            if (ferror(in_fp)) {
-                fprintf(stderr, "\nerror reading from input file\n");
-                return false;
+    switch (pid) {
+    case 0x01: // tx
+        {
+            tiny::tx tx;
+            in >> tx;
+            // printf("- read tx %s\n", tx.ToString().c_str());
+            if (!tx.IsCoinBase()) {
+                insert(tx);
             }
-            break;
         }
-        DEBLOG("%s", bptr);
-        size_t rbytes = strlen(bptr);
-        if (rbytes == 0) {
-            fprintf(stderr, "\nunable to read from input file\n");
-            return false;
-        }
-        bptr += rbytes;
-        if (bptr[-1] == '\n') {
-            // end of line
-            break;
-        }
-        rem -= rbytes;
-        if (rem < 2) {
-            rbytes = bptr - buffer;
-            buffer_cap <<= 1;
-            buffer = (char*)realloc(buffer, buffer_cap);
-            bptr = buffer + rbytes;
-            rem = buffer_cap - rbytes;
-        }
-    }
-
-    // remove newline
-    if (bptr > buffer && bptr[-1] == '\n') bptr[-1] = 0;
-
-    // hashtx <txid>
-    // rawtx <tx hex>
-    // hashblock <block id>
-
-    if (!strcmp(action, "hashtx")) {
-        // a transaction entered the mempool; we can't do anything
-        // with it yet, though, as we don't know inputs and stuff
-        // so we loop back and fetch the next entry
-        uint256 old = hashtx;
-        hashtx = uint256S(buffer);
-        read_hashtx = true;
-        return true;// read_entry();
-    }
-
-    if (!strcmp(action, "rawtx")) {
-        read_hashtx = false;
-        tiny::tx tx;
-        deserialize_hex_string(buffer, tx);
-        if (!tx.IsCoinBase()) {
-            insert(tx);
-        }
-        return true;// read_entry();
-    }
-
-    if (!strcmp(action, "hashblock")) {
-        uint256 blockhash = uint256S(buffer);
-        tiny::block blk;
-        uint32_t height;
-        if (rpc_get_block(blockhash, blk, height)) {
-            // fill in gaps in case this is not the next block
-            uint32_t expected_block_height = active_chain.chain.size() == 0 && chain_del != nullptr ? chain_del->expected_block_height() : active_chain.height + 1;
-            if (expected_block_height && expected_block_height < height) {
-                // printf("expected block height %u, got block at height %u\n", expected_block_height, height);
-                for (uint32_t i = expected_block_height; i < height; i++) {
-                    nlprintf("filling gap (height=%u)\n", i);
-                    tiny::block blk2;
-                    uint256 blockhash2;
-                    rpc_get_block(i, blk2, blockhash2);
-                    confirm(i, blockhash2, blk2);
+        return true;
+    case 0x02: // block hex
+        {
+            uint256 blockhash;
+            in >> blockhash;
+            // printf("- read blk %s\n", blockhash.ToString().c_str());
+            tiny::block blk;
+            uint32_t height;
+            if (rpc_get_block(blockhash, blk, height)) {
+                // fill in gaps in case this is not the next block
+                uint32_t expected_block_height = active_chain.chain.size() == 0 && chain_del != nullptr ? chain_del->expected_block_height() : active_chain.height + 1;
+                if (expected_block_height && expected_block_height < height) {
+                    // printf("expected block height %u, got block at height %u\n", expected_block_height, height);
+                    for (uint32_t i = expected_block_height; i < height; i++) {
+                        nlprintf("filling gap (height=%u)\n", i);
+                        tiny::block blk2;
+                        uint256 blockhash2;
+                        rpc_get_block(i, blk2, blockhash2);
+                        confirm(i, blockhash2, blk2);
+                    }
                 }
+                confirm(height, blockhash, blk);
             }
-            confirm(height, blockhash, blk);
         }
-        return true;//read_entry();
+        return true;
+    default:
+        // ???
+        fprintf(stderr, "\nunknown command %02x\n", pid);
+        assert(0);
     }
-
-    fprintf(stderr, "\nunknown command %s\n", action);
-    assert(0);
 }
 
-inline void mff_aj::sync() {
+inline void mff_ajb::sync() {
     int64_t now = GetTime();
     if (lastflush + 10 < now) {
         // printf("*\b"); fflush(stdout);

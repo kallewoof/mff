@@ -3,6 +3,7 @@
 #include <txmempool_format.h>
 #include <txmempool_format_rs.h>
 #include <txmempool_format_aj.h>
+#include <txmempool_format_ajb.h>
 #include <txmempool_format_timetail.h>
 #include <txmempool_format_simpletime.h>
 #include <cliargs.h>
@@ -27,6 +28,7 @@ inline mff::mff* alloc_mff_from_format(const std::string& fmt, const std::string
     else if (fmt == "mff-rs") return new mff::mff_rs(path, readonly);
     else if (fmt == "mff-st") return new mff::mff_simpletime_rseq<0>(path, readonly);
     else if (fmt == "aj-dump") return new mff::mff_aj(path, readonly);
+    else if (fmt == "ajb") return new mff::mff_ajb(path, readonly);
     return nullptr;
 }
 
@@ -52,12 +54,13 @@ int main(int argc, char* const* argv) {
             "  mff-rs    Reused sequence based Memory File Format\n"
             "  mff-st    Simple-time MFF (Rev 2018-06-08)\n"
             "  aj-dump   AJ mempool history dump (ZMQ)\n"
+            "  ajb       Binary AJ mempool history dump\n"
         );
         return 1;
     }
 
     if (ca.m.count('r')) {
-        mff::aj_rpc_call = ca.m['r'];
+        mff::aj_rpc_call = mff::ajb_rpc_call = ca.m['r'];
     }
 
     if (ca.m.count('m')) {
@@ -180,7 +183,7 @@ int main(int argc, char* const* argv) {
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
-            printf(" %5.1f%% %s [%u -> %llu, %7.3fx]\r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
+            printf(" %5.1f%% %s [%u -> %llu, %7.3fx]   \r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
             fflush(stdout);
             needs_newline = true;
             if (elapsed > 20 && now - timepoint_b > 10) {
