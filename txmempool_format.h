@@ -5,6 +5,10 @@
 #ifndef BITCOIN_TXMEMPOOL_FORMAT_H
 #define BITCOIN_TXMEMPOOL_FORMAT_H
 
+#include <thread>
+#include <mutex>
+#include <atomic>
+
 #include <mff.h>
 #include <serialize.h>
 #include <streams.h>
@@ -20,7 +24,7 @@ public:
     virtual void seq_write(seq_t seq) = 0;
 };
 
-#define MAX_RSEQ_CONTAINERS 2
+#define MAX_RSEQ_CONTAINERS 3
 extern rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
 
 template <typename Stream, int I>
@@ -54,7 +58,7 @@ public:
     void serialize_tx(Stream& s, const tx& t) {
         long l = g_rseq_ctr[I]->tell();
         #undef DEBUG_SER
-        #define DEBUG_SER(args...) if (l == 116166765) printf(args)
+        #define DEBUG_SER(args...) if (s.debugging) printf(args)
         DEBUG_SER("serializing tx\n");
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());   // 32
         Serialize(s, t.id);
@@ -143,9 +147,25 @@ public:
     }
 };
 
+struct queue {
+    bool done = false;
+    std::atomic<uint32_t> queue_height_goal{0};
+    std::atomic<uint32_t> queue_height_done{0};
+    std::map<uint32_t, std::vector<seq_t>> frozen_queue;  // invalidated or confirmed queue
+    std::map<uint32_t, std::vector<seq_t>> chilled_queue; // discarded (valid) queue
+    std::vector<seq_t> purge_queue;                       // to-be-purged sequences
+    std::mutex purge_mutex;                               // purge queue mutex
+    txs_t* txs;                                           // ref to txs dictionary
+};
+
+void queue_processor_f(queue* q);
+
 template<int I>
 class mff_rseq: public mff, public rseq_container, public chain_delegate, public listener_callback {
 private:
+    queue q;
+    std::thread* queue_processor{nullptr};
+
     constexpr static size_t MAX_BLOCKS = 6; // keep this many blocks
     int64_t lastflush;
     FILE* in_fp;
@@ -161,8 +181,6 @@ private:
     inline void tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const uint256& txid, uint8_t reason);
     inline void tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause);
 
-    std::map<uint32_t, std::vector<seq_t>> frozen_queue;  // invalidated or confirmed queue
-    std::map<uint32_t, std::vector<seq_t>> chilled_queue; // discarded (valid) queue
     inline void tx_freeze(seq_t seq);
     inline void tx_chill(seq_t seq);
     inline void tx_thaw(seq_t seq);

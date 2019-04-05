@@ -3,7 +3,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 ACLOCAL_AMFLAGS = -I build-aux/m4
-AM_LDFLAGS = $(LIBTOOL_LDFLAGS)
+AM_LDFLAGS = $(LIBTOOL_LDFLAGS) -pthread
 EXTRA_LIBRARIES =
 
 BITCOIN_INCLUDES=-I$(builddir)

@@ -39,7 +39,7 @@ static const uint256 debug_txid = DEBUG_TXID;
 
 namespace mff {
 
-simpletime_rseq_container* g_simpletime_rseq_ctr[MAX_RSEQ_CONTAINERS];
+simpletime_rseq_container* g_simpletime_rseq_ctr[MAX_RSEQ_CONTAINERS_SIMPLETIME];
 size_t initialized_simpletime_rseq_ctrs = 0;
 
 inline simpletime_rseq_container* get_simpletime_rseq_ctr(size_t idx) {
@@ -239,7 +239,7 @@ void mff_simpletime_rseq<I>::apply_block(std::shared_ptr<block> b) {
             assert(!"block missing transactions");
         }
         // printf("block %u ok\n", b->height);
-    } else printf("block %u not checked (block data missing)\n", b->height);
+    } //else printf("block %u not checked (block data missing)                                      \n", b->height);
     // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
@@ -991,7 +991,7 @@ inline void mff_simpletime_rseq<I>::tx_rec(seqdict_server* source, const tx& x) 
         uint64_t offset = pos - tx_recs[x.id].pos;
         seq_write(t->seq);
         in << VARINT(offset);
-        printf("%ld: known tx %s=%llu at pos %ld - %ld = %llu\n", pos, t->id.ToString().c_str(), t->seq, pos, tx_recs[x.id].pos, offset);
+        // printf("%ld: known tx %s=%llu at pos %ld - %ld = %llu\n", pos, t->id.ToString().c_str(), t->seq, pos, tx_recs[x.id].pos, offset);
     } else {
         serializer.serialize_tx(in, *t);
         if (seekable) tx_recs[x.id] = {pos, t->seq};

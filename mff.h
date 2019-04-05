@@ -324,7 +324,8 @@ public:
     bool conversion_source = false;
     bool seekable = true;
     std::map<uint8_t,uint64_t> space_usage;
-    inline void used(uint8_t cmd, uint64_t amt) { space_usage[cmd] += amt; }
+    std::map<uint8_t,uint64_t> cmd_usage;
+    inline void used(uint8_t cmd, uint64_t amt) { cmd_usage[cmd]++; space_usage[cmd] += amt; }
 
     chain_delegate* chain_del = nullptr;
     virtual void link_source(mff* src) {}
@@ -385,6 +386,7 @@ public:
         t2->seq = claim_seq(t2->id);
         // printf("prevouts ");
         // convert the inputs
+        size_t state_index = 0;
         for (outpoint& o : t2->vin) {
             if (o.is_known()) {
                 if (!server->txs.count(o.get_seq())) {
@@ -405,11 +407,13 @@ public:
                     // we failed to become aware of the tx. let's just flip it to unknown
                     fprintf(stderr, "*** known prevout with txid %s (input to %s) not in seqs[] ***\n", prevhash.ToString().c_str(), t.id.ToString().c_str());
                     o.set(prevhash);
+                    t2->state[state_index] -= t2->state[state_index] & outpoint::state_known;
                 } else {
                     // assert(seqs.count(prevhash));
                     o.set(seqs[prevhash]);
                 }
             }
+            ++state_index;
         }
         // printf("got %llu=%s\n", seqs[t.id], t.id.ToString().c_str());
         seqs[t2->id] = t2->seq;

@@ -60,12 +60,13 @@ int main(int argc, char* const* argv) {
     ca.add_option("long", 'l', no_arg);
     ca.add_option("verbose", 'v', no_arg);
     ca.add_option("depth", 'd', req_arg);
+    ca.add_option("count", 'c', no_arg);
     ca.parse(argc, argv);
 
     bool piping = mff_piping = !isatty(fileno(stdin));
 
     if (ca.m.count('h') || ca.l.size() < 1 + (!piping)) {
-        fprintf(stderr, "syntax: %s [--help|-h] [--long|-l] [--verbose|-v] [--depth=<depth>|-d<depth>] <mff file> <txid> [<txid> [...]]\n", argv[0]);
+        fprintf(stderr, "syntax: %s [--help|-h] [--long|-l] [--verbose|-v] [--count|-c] [--depth=<depth>|-d<depth>] <mff file> <txid> [<txid> [...]]\n", argv[0]);
         return 1;
     }
 
@@ -87,8 +88,11 @@ int main(int argc, char* const* argv) {
     printf("%s: ---log starts---\n", time_string(reader->last_time).c_str());
     uint64_t entries = 0;
     uint32_t nooutputiters = 0;
+    bool enable_counting = ca.m.count('c') > 0;
+    int64_t start_time = GetTime();
+    int64_t recorded_start_time = reader->last_time;
     do {
-        bool count = true;
+        bool count = enable_counting;
         for (const tracked& t : txids) {
             const uint256& txid = t.txid;
             if (reader->touched_txid(txid, count)) {
@@ -160,21 +164,34 @@ int main(int argc, char* const* argv) {
             }
         }
     } while (reader->read_entry());
+    int64_t recorded_end_time = reader->last_time;
+    int64_t end_time = GetTime();
     printf("%s: ----log ends----\n", time_string(reader->last_time).c_str());
-    printf("%llu entries parsed\n", entries);
-    printf("txid hits:\n");
-    uint32_t max = 0;
-    for (const auto& th : reader->txid_hits) {
-        if (th.second > max || (th.second == max && max > 4)) {
-            printf("%s: %6u\n", th.first.ToString().c_str(), th.second);
-            max = th.second;
+    int64_t elapsed = recorded_end_time - recorded_start_time;
+    int64_t htotal = elapsed / 3600;
+    int64_t days = elapsed / 86400;
+    int64_t hours = (elapsed % 86400) / 3600;
+    printf("%llu entries over %lld days, %lld hours parsed in %lld seconds (%lld entries/s, or %lld hours/real second)\n", entries, days, hours, end_time - start_time, entries / (end_time - start_time), htotal / (end_time - start_time));
+    if (enable_counting) {
+        printf("txid hits:\n");
+        uint32_t max = 0;
+        for (const auto& th : reader->txid_hits) {
+            if (th.second > max || (th.second == max && max > 4)) {
+                printf("%s: %6u\n", th.first.ToString().c_str(), th.second);
+                max = th.second;
+            }
         }
+    } else {
+        printf("(no txid hit data available; re-run with --count flag)\n");
     }
     uint64_t total = (uint64_t)reader->tell();
     uint64_t counted = total - 2; // magic number
+    printf("%-10s   %-10s (%-6s) [%-8s (%-6s)]\n", "category", "bytes", "%", "count", "%");
+    printf("==========   ==========  ======   ========  ======  \n");
     for (auto& x : reader->space_usage) {
         counted -= x.second;
-        printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
+        uint64_t count = reader->cmd_usage[x.first];
+        printf("%10s : %-10llu (%5.2f%%) [%-8llu (%5.2f%%)]\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total, count, 100.0 * count / entries);
     }
     printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
     delete reader;

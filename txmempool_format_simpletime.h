@@ -20,8 +20,8 @@ public:
     virtual void seq_write(seq_t seq) = 0;
 };
 
-#define MAX_RSEQ_CONTAINERS 2
-extern simpletime_rseq_container* g_simpletime_rseq_ctr[MAX_RSEQ_CONTAINERS];
+#define MAX_RSEQ_CONTAINERS_SIMPLETIME 2
+extern simpletime_rseq_container* g_simpletime_rseq_ctr[MAX_RSEQ_CONTAINERS_SIMPLETIME];
 
 template <typename Stream, int I>
 class simpletime_rseq_adapter: public adapter<Stream> {

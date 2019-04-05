@@ -10,10 +10,11 @@
 #include <streams.h>
 #include <tinytx.h>
 #include <tinyblock.h>
+#include <tinyrpc.h>
+
+extern tiny::rpc* rpc;
 
 namespace mff {
-
-extern std::string ajb_rpc_call;
 
 class mff_ajb: public mff {
 private:
@@ -25,12 +26,6 @@ private:
     void apply_block(std::shared_ptr<block> b);
     void undo_block_at_height(uint32_t height);
     inline void sync();
-
-    // RPC stuff
-    bool rpc_get_block(const uint256& blockhex, tiny::block& b, uint32_t& height);
-    bool rpc_get_block(uint32_t height, tiny::block& b, uint256& blockhex);
-    void rpc_get_tx(const uint256& txhex, tiny::tx& tx, size_t retries = 0);
-    tiny::amount rpc_get_tx_input_amount(tiny::tx& tx);
 
     // AMAP stuff
     int64_t amap_get_output_value(const uint256& txid, int n);

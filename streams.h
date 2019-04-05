@@ -348,7 +348,7 @@ public:
         if (nReadPosNext > vch.size()) {
             throw std::ios_base::failure("CDataStream::read(): end of data");
         }
-        memcpy(pch, &vch[nReadPos], nSize);        
+        memcpy(pch, &vch[nReadPos], nSize);
         if (nReadPosNext == vch.size())
         {
             nReadPos = 0;
@@ -441,7 +441,11 @@ public:
 
 
 
-
+#ifdef DEBUG_TOLD
+#define verify_told_()  assert(ftell(file) == told)
+#else
+#define verify_told_()
+#endif
 
 
 /** Non-refcounted RAII wrapper for FILE*
@@ -456,9 +460,10 @@ private:
     const int nType;
     const int nVersion;
 
-    FILE* file;	
+    FILE* file;
 
 public:
+    long told = 0;
     bool debugging = false;
     void debugme(bool yes) { debugging = yes; }
     CAutoFile(FILE* filenew, int nTypeIn, int nVersionIn) : nType(nTypeIn), nVersion(nVersionIn)
@@ -505,12 +510,16 @@ public:
     int GetType() const          { return nType; }
     int GetVersion() const       { return nVersion; }
 
+    void seek(long offset, int whence = SEEK_SET) { fseek(file, offset, whence); told = whence == SEEK_SET ? offset : whence == SEEK_CUR ? told + offset : ftell(file); }
+
     void read(char* pch, size_t nSize)
     {
         if (!file)
             throw std::ios_base::failure("CAutoFile::read: file handle is nullptr");
         if (fread(pch, 1, nSize, file) != nSize)
             throw std::ios_base::failure(feof(file) ? "CAutoFile::read: end of file" : "CAutoFile::read: fread failed");
+        told += nSize;
+        verify_told_();
         if (debugging) { printf("<<< %zu:[", nSize); for (size_t i = 0; i < nSize; i++) printf("%02x", (uint8_t)pch[i]); printf("]\n"); }
     }
 
@@ -525,15 +534,19 @@ public:
                 throw std::ios_base::failure(feof(file) ? "CAutoFile::ignore: end of file" : "CAutoFile::read: fread failed");
             nSize -= nNow;
         }
+        told += nSize;
+        verify_told_();
     }
 
     void write(const char* pch, size_t nSize)
     {
+        verify_told_();
         if (debugging) { printf(">>> %zu:[", nSize); for (size_t i = 0; i < nSize; i++) printf("%02x", (uint8_t)pch[i]); printf("]\n"); }
         if (!file)
             throw std::ios_base::failure("CAutoFile::write: file handle is nullptr");
         if (fwrite(pch, 1, nSize, file) != nSize)
             throw std::ios_base::failure("CAutoFile::write: write failed");
+        told += nSize;
     }
 
     template<typename T>

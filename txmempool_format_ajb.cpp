@@ -2,11 +2,11 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <tinyrpc.h>
 #include <streams.h>
 #include <tinyblock.h>
 #include <unistd.h>
 #include <amap.h>
-#include <tinyfs.h>
 
 #include <txmempool_format_ajb.h>
 
@@ -21,8 +21,6 @@
 // #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
 namespace mff {
-
-std::string ajb_rpc_call = "";
 
 // bool showinfo = false;
 #define mplinfo_(args...) // if (showinfo) { printf(args); }
@@ -151,169 +149,10 @@ uint256 mff_ajb::get_invalidated_txid() const {
 
 /////// RPC
 
-inline tiny::File rpc_fetch(const char* cmd, const std::string& dst, bool abort_on_failure = false) {
-    if (ajb_rpc_call == "") {
-        assert(!"no RPC call available");
-    }
-    system(cmd);
-    tiny::File fp = tiny::OpenFile(dst, "r");
-    if (!fp->has_data()) {
-        fp->close();
-        fprintf(stderr, "RPC call failed: %s\n", cmd);
-        if (!abort_on_failure) {
-            fprintf(stderr, "waiting 5 seconds and trying again\n");
-            sleep(5);
-            return rpc_fetch(cmd, dst, true);
-        }
-        assert(0);
-    }
-    return fp;
-}
-
 template<typename T>
 inline void deserialize_hex_string(const char* string, T& object) {
     CDataStream ds(ParseHex(string), SER_DISK, 0);
     ds >> object;
-}
-
-bool mff_ajb::rpc_get_block(uint32_t height, tiny::block& b, uint256& blockhex) {
-    std::string dstfinal = "blockdata/" + std::to_string(height) + ".hth";
-    tiny::File fp = tiny::OpenFile(dstfinal, "rb");
-    // FILE* fp = fopen(dstfinal.c_str(), "rb");
-    if (!fp->has_data()) {
-        std::string dsttxt = "blockdata/" + std::to_string(height) + ".hth.txt";
-        tiny::File fptxt = tiny::OpenFile(dsttxt, "r");
-        if (!fptxt->has_data()) {
-            std::string cmd = ajb_rpc_call + " getblockhash " + std::to_string(height) + " > " + dsttxt;
-            fptxt = rpc_fetch(cmd.c_str(), dsttxt);
-        }
-        char hex[128];
-        fscanf(fptxt->m_fp, "%s", hex);
-        assert(strlen(hex) == 64);
-        blockhex = uint256S(hex);
-        fptxt->close();
-        fp = tiny::OpenFile(dstfinal, "wb");
-        fp->autofile() << blockhex;
-        return rpc_get_block(blockhex, b, height);
-    }
-    fp->autofile() >> blockhex;
-    return rpc_get_block(blockhex, b, height);
-}
-
-bool mff_ajb::rpc_get_block(const uint256& blockhex, tiny::block& b, uint32_t& height) {
-    // printf("get block %s\n", blockhex.ToString().c_str());
-    std::string dstfinal = "blockdata/" + blockhex.ToString() + ".mffb";
-    tiny::File fp = tiny::OpenFile(dstfinal, "rb");
-    if (!fp->has_data()) {
-        std::string dsthex = "blockdata/" + blockhex.ToString() + ".hex";
-        std::string dsthdr = "blockdata/" + blockhex.ToString() + ".hdr";
-        tiny::File fphex = tiny::OpenFile(dsthex, "r");
-        tiny::File fphdr = tiny::OpenFile(dsthdr, "r");
-        if (!fphex->has_data()) {
-            std::string cmd = ajb_rpc_call + " getblock " + blockhex.ToString() + " 0 > " + dsthex;
-            fphex = rpc_fetch(cmd.c_str(), dsthex);
-        }
-        if (!fphdr->has_data()) {
-            std::string cmd = ajb_rpc_call + " getblockheader " + blockhex.ToString() + " > " + dsthdr;
-            fphdr = rpc_fetch(cmd.c_str(), dsthdr);
-        }
-        fphdr->close();
-        // fclose(fphdr);                                      // closes fphdr
-        std::string dstheight = std::string("blockdata/") + blockhex.ToString() + ".height";
-        std::string cmd = std::string("cat ") + dsthdr + " | jq -r .height > " + dstheight;
-        system(cmd.c_str());
-        fphdr = tiny::OpenFile(dstheight, "r");
-        if (fscanf(fphdr->m_fp, "%u", &height) != 1) {
-            // block is probably an orphan block
-            printf("failure to load orphan block %u=%s\n", height, blockhex.ToString().c_str());
-            // fprintf(stderr, "UNDETECTED FAILURE: BLOCK=%s\n", blockhex.ToString().c_str());
-            return false;
-        }
-        fphdr->close();
-        // fclose(fphdr);                                      // closes fphdr (.height open)
-        fseek(fphex->m_fp, 0, SEEK_END);
-        size_t sz = ftell(fphex->m_fp);
-        fseek(fphex->m_fp, 0, SEEK_SET);
-        char* blk = (char*)malloc(sz + 1);
-        assert(blk);
-        fread(blk, 1, sz, fphex->m_fp);
-        fphex->close();
-        // fclose(fphex);                                      // closes fphex
-        blk[sz] = 0;
-        std::vector<uint8_t> blkdata = ParseHex(blk);
-        free(blk);
-        fp = tiny::OpenFile(dstfinal, "wb+");
-        // write height
-        fp->write(height);
-        // fwrite(&height, sizeof(uint32_t), 1, fp);
-        // write block
-        fp->write(blkdata);
-        fseek(fp->m_fp, 0, SEEK_SET);
-        // unlink
-        unlink(dsthex.c_str());
-        unlink(dsthdr.c_str());
-        unlink(dstheight.c_str());
-    }
-    // read height
-    fp->read(height);
-    // fread(&height, sizeof(uint32_t), 1, fp);
-    // deserialize block
-    fp->autofile() >> b;
-    // deserializer closes fp
-    return true;
-}
-
-void mff_ajb::rpc_get_tx(const uint256& txhex, tiny::tx& tx, size_t retries) {
-    printf("get tx %s\n", txhex.ToString().c_str());
-    std::string dstfinal = "txdata/" + txhex.ToString() + ".mfft";
-    tiny::File fp = tiny::OpenFile(dstfinal, "rb");
-    if (!fp->has_data()) {
-        std::string dsthex = "txdata/" + txhex.ToString() + ".hex";
-        std::string cmd = ajb_rpc_call + " getrawtransaction " + txhex.ToString() + " > " + dsthex;
-        tiny::File fphex = tiny::OpenFile(dsthex, "r");
-        if (!fphex->has_data()) {
-            fphex = rpc_fetch(cmd.c_str(), dsthex.c_str());
-        }
-        fseek(fphex->m_fp, 0, SEEK_END);
-        size_t sz = ftell(fphex->m_fp);
-        fseek(fphex->m_fp, 0, SEEK_SET);
-        if (sz == 0) {
-            if (retries == 5) {
-                fprintf(stderr, "failed to fetch tx %s after 5 tries, aborting\n", txhex.ToString().c_str());
-                assert(0);
-            }
-            fprintf(stderr, "failed to fetch tx %s... waiting 5 seconds and trying again...\n", txhex.ToString().c_str());
-            unlink(dsthex.c_str());
-            sleep(5);
-            return rpc_get_tx(txhex, tx, retries + 1);
-        }
-        char* txhex = (char*)malloc(sz + 1);
-        assert(txhex);
-        fread(txhex, 1, sz, fphex->m_fp);
-        fphex->close();                                      // closes fphex
-        txhex[sz] = 0;
-        std::vector<uint8_t> txdata = ParseHex(txhex);
-        free(txhex);
-        fp = tiny::OpenFile(dstfinal, "wb+");
-        // write tx
-        fp->write(txdata);
-        fseek(fp->m_fp, 0, SEEK_SET);
-        // unlink
-        unlink(dsthex.c_str());
-    }
-    // deserialize tx
-    fp->autofile() >> tx;
-    // deserializer closes fp
-}
-
-tiny::amount mff_ajb::rpc_get_tx_input_amount(tiny::tx& tx) {
-    tiny::amount amount = 0;
-    tiny::tx tt;
-    for (auto& input : tx.vin) {
-        rpc_get_tx(input.prevout.hash, tt);
-        amount += tt.vout[input.prevout.n].value;
-    }
-    return amount;
 }
 
 ///////// AMAP
@@ -350,7 +189,7 @@ int64_t mff_ajb::get_output_value(const uint256& txid, int n)
     rpc_count++;
     printf("fallback to RPC for %s\n", txid.ToString().c_str());
     tiny::tx t;
-    rpc_get_tx(txid, t);
+    rpc->get_tx(txid, t);
     return t.vout[n].value;
 }
 
@@ -385,9 +224,9 @@ std::shared_ptr<tx> mff_ajb::register_tx(tiny::tx& tt) {
             fprintf(stderr, "*** in < out: %lld < %lld\n", in_amount, sum_out);
         }
         assert(in_amount >= sum_out);
-        t->fee = in_amount - sum_out; // rpc_get_tx_input_amount(tt) - sum_out;
+        t->fee = in_amount - sum_out; // rpc->get_tx_input_amount(tt) - sum_out;
         // tiny::tx tx2;
-        // rpc_get_tx(tt.hash, tx2);
+        // rpc->get_tx(tt.hash, tx2);
     }
     t->inputs = tt.vin.size();
     t->state.resize(t->inputs);
@@ -489,16 +328,16 @@ bool mff_ajb::read_entry() {
             // printf("- read blk %s\n", blockhash.ToString().c_str());
             tiny::block blk;
             uint32_t height;
-            if (rpc_get_block(blockhash, blk, height)) {
+            if (rpc->get_block(blockhash, blk, height)) {
                 // fill in gaps in case this is not the next block
                 uint32_t expected_block_height = active_chain.chain.size() == 0 && chain_del != nullptr ? chain_del->expected_block_height() : active_chain.height + 1;
                 if (expected_block_height && expected_block_height < height) {
-                    // printf("expected block height %u, got block at height %u\n", expected_block_height, height);
+                    printf("expected block height %u, got block at height %u\n", expected_block_height, height);
                     for (uint32_t i = expected_block_height; i < height; i++) {
                         nlprintf("filling gap (height=%u)\n", i);
                         tiny::block blk2;
                         uint256 blockhash2;
-                        rpc_get_block(i, blk2, blockhash2);
+                        rpc->get_block(i, blk2, blockhash2);
                         confirm(i, blockhash2, blk2);
                     }
                 }

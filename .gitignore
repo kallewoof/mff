@@ -30,3 +30,7 @@ mff-reader
 .dirstamp
 mff.out
 mff-conv
+*.mff
+*data
+aj2bin
+amap

@@ -8,6 +8,7 @@
 #include <txmempool_format_simpletime.h>
 #include <cliargs.h>
 #include <tinytx.h>
+#include <tinyrpc.h>
 #include <amap.h>
 
 std::string time_string(int64_t time) {
@@ -22,7 +23,8 @@ inline mff::mff* alloc_mff_from_format(const std::string& fmt, const std::string
     if (fmt == "mff") {
         rseq_idx++;
         if (rseq_idx == 1) return new mff::mff_rseq<0>(path, readonly);
-        else return new mff::mff_rseq<1>(path, readonly);
+        else if (rseq_idx == 2) return new mff::mff_rseq<1>(path, readonly);
+        else return new mff::mff_rseq<2>(path, readonly);
     }
     else if (fmt == "mff-tt") return new mff::mff_rseq_tt<0>(path, readonly);
     else if (fmt == "mff-rs") return new mff::mff_rs(path, readonly);
@@ -34,6 +36,7 @@ inline mff::mff* alloc_mff_from_format(const std::string& fmt, const std::string
 
 bool needs_newline = false;
 bool mff_piping = false;
+tiny::rpc* rpc = nullptr;
 
 int main(int argc, char* const* argv) {
     cliargs ca;
@@ -60,7 +63,7 @@ int main(int argc, char* const* argv) {
     }
 
     if (ca.m.count('r')) {
-        mff::aj_rpc_call = mff::ajb_rpc_call = ca.m['r'];
+        rpc = new tiny::rpc(ca.m['r']);
     }
 
     if (ca.m.count('m')) {

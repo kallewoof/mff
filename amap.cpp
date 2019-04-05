@@ -60,6 +60,7 @@ bool fbinsearch(FILE* fp, long start, long end, const uint8_t* what, size_t what
 #undef fbdeb
 
 CAmount output_amount(const uint256& txid, int index) {
+    if (!enabled) return -1;
     if (txid == uint256S("59aa5ee3db978ea8168a6973b505c31b3f5f4757330da4ef45da0f51a81c1fc9")) {
         fprintf(stderr, "you should not be asking for 59aa5... cause you should ALREADY HAVE IT\n");
         exit(1);
@@ -92,7 +93,7 @@ CAmount output_amount(const uint256& txid, int index) {
         assert(0);
     }
     long cmarker = ftell(fp);
-    
+
     if (!fbinsearch(fp, cmarker, cmarker + (36 - prefix_len) * txcount, &txid.begin()[prefix_len], 32 - prefix_len, 36 - prefix_len)) {
         // fprintf(stderr, "cannot find txid %s in file %s\n", txid.ToString().c_str(), fname.c_str());
         return -1;
