@@ -204,7 +204,7 @@ seq_t mff_rseq_tt<I>::touched_txid(const uint256& txid, bool count) {
             if (txs.count(seq) && counted.find(txs[seq]->id) == counted.end()) {
                 txid_hits[txs[seq]->id]++;
                 counted.insert(txs[seq]->id);
-                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%llu @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
+                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%" PRIu64 " @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
             }
             // i++;
         }
@@ -292,7 +292,7 @@ bool mff_rseq_tt<I>::read_entry() {
                     last_seqs.push_back(prevout.get_seq());
                 }
             }
-            // mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
+            // mplinfo_("id=%s, seq=%" PRIu64 "\n", t->id.ToString().c_str(), t->seq);
             t->location = tx::location_in_mempool;
             if (listener) listener->tx_rec(this, *t);
             break;
@@ -307,7 +307,7 @@ bool mff_rseq_tt<I>::read_entry() {
             if (txs.count(seq)) {
                 txs[seq]->location = tx::location_in_mempool;
             }
-            mplinfo_("seq=%llu\n", seq);
+            mplinfo_("seq=%" PRIu64 "\n", seq);
             last_seqs.push_back(seq);
             if (listener) listener->tx_in(this, *txs[seq]);
             break;
@@ -349,7 +349,7 @@ bool mff_rseq_tt<I>::read_entry() {
             auto t = txs[seq];
             t->location = tx::location_discarded;
             t->out_reason = (tx::out_reason_enum)reason;
-            mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
+            mplinfo_("seq=%" PRIu64 ", reason=%s\n", seq, tx_out_reason_str(reason));
             if (listener) listener->tx_out(this, *txs[seq], t->out_reason);
             break;
         }
@@ -376,7 +376,7 @@ bool mff_rseq_tt<I>::read_entry() {
             mplinfo_("--- state = %d (cause_known = %d)\n", state, cause_known);
             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
                 read_txseq_keep(cause_known, tx_cause, replacement_txid);
-                mplinfo_("--- read_txseq(%d, tx_cause) = %llu\n", cause_known, tx_cause);
+                mplinfo_("--- read_txseq(%d, tx_cause) = %" PRIu64 "\n", cause_known, tx_cause);
                 last_seqs.push_back(tx_cause);
                 replacement_seq = tx_cause;
             }
@@ -401,7 +401,7 @@ bool mff_rseq_tt<I>::read_entry() {
                     assert(last_invalidated_tx.hash == txs[tx_invalid]->id);
                 }
             }
-            mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
+            mplinfo_("seq=%" PRIu64 ", state=%s, cause=%" PRIu64 ", tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
             mplinfo_("----- tx invalid deserialization ends -----\n");
             if (listener) listener->tx_invalid(this, *txs[tx_invalid], last_invalidated_txhex, txs[tx_invalid]->invalid_reason, replacement_seq ? &txs[replacement_seq]->id : replacement_txid.IsNull() ? nullptr : &replacement_txid);
             // out.debugme(false);
@@ -420,10 +420,10 @@ bool mff_rseq_tt<I>::read_entry() {
                 if (listener) assert(!"not implemented");
                 mplinfo_("unknown, height=%u\n", height);
                 uint64_t count = ReadCompactSize(in);
-                mplinfo("%llu transactions\n", count);
+                mplinfo("%" PRIu64 " transactions\n", count);
                 for (uint64_t i = 0; i < count; ++i) {
                     uint64_t seq = seq_read();
-                    mplinfo("%llu: seq = %llu\n", i, seq);
+                    mplinfo("%" PRIu64 ": seq = %" PRIu64 "\n", i, seq);
                     if (seq) {
                         assert(txs.count(seq));
                         last_seqs.push_back(seq);
@@ -493,13 +493,13 @@ bool mff_rseq_tt<I>::read_entry() {
 //     known = e->known;
 //     u8 = prot(cmd, known);
 //     in << u8;
-// 
+//
 //     switch (cmd) {
 //         case CMD::TIME_SET:
 //             // time updated after switch()
 //             mplinfo("TIME_SET()\n");
 //             break;
-// 
+//
 //         case TX_REC: {
 //             mplinfo("TX_REC(): "); fflush(stdout);
 //             auto t = import_tx(e->sds, e->tx);
@@ -509,12 +509,12 @@ bool mff_rseq_tt<I>::read_entry() {
 //             }
 //             txs[t->seq] = t;
 //             seqs[t->id] = t->seq;
-//             mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
+//             mplinfo_("id=%s, seq=%" PRIu64 "\n", t->id.ToString().c_str(), t->seq);
 //             t->location = tx::location_in_mempool;
 //             serializer.serialize_tx(in, *t);
 //             break;
 //         }
-// 
+//
 //         case TX_IN: {
 //             mplinfo("TX_IN(): "); fflush(stdout);
 //             auto t = import_tx(e->sds, e->tx);
@@ -525,10 +525,10 @@ bool mff_rseq_tt<I>::read_entry() {
 //                 txs[seq]->location = tx::location_in_mempool;
 //             }
 //             seq_write(seq);
-//             mplinfo_("seq=%llu\n", seq);
+//             mplinfo_("seq=%" PRIu64 "\n", seq);
 //             break;
 //         }
-// 
+//
 //         case BLOCK_CONF: {
 //             // l1("BLOCK_CONF(%s): ", known ? "known" : "unknown");
 //             auto b = e->block_in;
@@ -550,7 +550,7 @@ bool mff_rseq_tt<I>::read_entry() {
 //             }
 //             break;
 //         }
-// 
+//
 //         case TX_OUT: {
 //             assert(known);
 //             mplinfo("TX_OUT(): "); fflush(stdout);
@@ -563,16 +563,16 @@ bool mff_rseq_tt<I>::read_entry() {
 //             t->out_reason = (tx::out_reason_enum)reason;
 //             seq_write(seq);
 //             in << reason;
-//             mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
+//             mplinfo_("seq=%" PRIu64 ", reason=%s\n", seq, tx_out_reason_str(reason));
 //             break;
 //         }
-// 
+//
 //         case TX_INVALID: {
 //             mplinfo("TX_INVALID(): "); fflush(stdout);
 //             // out.debugme(true);
 //             replacement_seq = 0;
 //             replacement_txid.SetNull();
-// 
+//
 //             auto t_invalid = import_tx(e->sds, e->tx);
 //             // printf("t_invalid = %s\n", t_invalid->id.ToString().c_str());
 //             seq_t tx_invalid = seqs[t_invalid->id];
@@ -582,9 +582,9 @@ bool mff_rseq_tt<I>::read_entry() {
 //             seq_t tx_cause(0);
 //             const uint256& invalid_replacement = e->invalid_replacement;
 //             const tiny::tx* invalid_tinytx = e->invalid_tinytx;
-// 
+//
 //             write_txref(tx_invalid, t_invalid->id);
-// 
+//
 //             uint8_t v = state | (cause_known ? CMD::TX_KNOWN_BIT : 0);
 //             in << v;
 //             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
@@ -592,10 +592,10 @@ bool mff_rseq_tt<I>::read_entry() {
 //                 seq_t causeseq = seqs.count(invalid_replacement) ? seqs[invalid_replacement] : 0;
 //                 write_txref(causeseq, invalid_replacement);
 //             }
-// 
+//
 //             in << *invalid_tinytx;
 //             // printf("invalid tinytx = %s\n", invalid_tinytx->hash.ToString().c_str());
-// 
+//
 //             if (tx_invalid) {
 //                 auto t = txs[tx_invalid];
 //                 t->location = tx::location_invalid;
@@ -608,12 +608,12 @@ bool mff_rseq_tt<I>::read_entry() {
 //                     assert(invalid_tinytx->hash == txs[tx_invalid]->id);
 //                 }
 //             }
-//             mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
+//             mplinfo_("seq=%" PRIu64 ", state=%s, cause=%" PRIu64 ", tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
 //             mplinfo_("----- tx invalid deserialization ends -----\n");
 //             // out.debugme(false);
 //             break;
 //         }
-// 
+//
 //         case BLOCK_UNCONF: {
 //             mplinfo("BLOCK_UNCONF(): "); fflush(stdout);
 //             uint32_t height = e->unconf_height;
@@ -626,7 +626,7 @@ bool mff_rseq_tt<I>::read_entry() {
 //             }
 //             break;
 //         }
-// 
+//
 //         default:
 //             mplerr("u8 = %u, cmd = %u\n", u8, cmd);
 //             assert(!"unknown command"); // todo: exceptionize
@@ -678,7 +678,7 @@ const std::shared_ptr<tx> mff_rseq_tt<I>::register_entry(const tiny::mempool_ent
         bool confirmed = known && txs[seq]->location == tx::location_confirmed;
         t->state[i] = confirmed ? outpoint::state_confirmed : known ? outpoint::state_known : outpoint::state_unknown;
         t->vin[i] = known ? outpoint(prevout.n, seq) : outpoint(prevout.n, prevout.hash);
-        // printf("- vin %llu = %s n=%d, seq=%llu, hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
+        // printf("- vin %" PRIu64 " = %s n=%d, seq=%" PRIu64 ", hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
     }
 
     txs[t->seq] = t;
@@ -709,7 +709,7 @@ void mff_rseq_tt<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry
 
 template<int I>
 inline void mff_rseq_tt<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t reason) {
-    mplinfo("TX_OUT %s %llu %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_out_reason_str(reason));
+    mplinfo("TX_OUT %s %" PRIu64 " %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_out_reason_str(reason));
     uint8_t b = prot(CMD::TX_OUT, known);
     if (known) {
         t->location = tx::location_discarded;
@@ -725,7 +725,7 @@ inline void mff_rseq_tt<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t,
 template<int I>
 inline void mff_rseq_tt<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause) {
     // out.debugme(true);
-    mplinfo("TX_INVALID %s %llu %s [%s]\n", known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(state));
+    mplinfo("TX_INVALID %s %" PRIu64 " %s [%s]\n", known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(state));
     uint8_t b = prot(CMD::TX_INVALID, known);
     if (known) {
         t->location = tx::location_invalid;

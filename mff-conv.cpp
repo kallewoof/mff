@@ -137,9 +137,9 @@ int main(int argc, char* const* argv) {
         uint64_t counted = total - 2; // magic 'BM'
         for (auto& x : out->space_usage) {
             counted -= x.second;
-            printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
+            printf("%10s : %-10" PRIi64 " (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
         }
-        printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
+        printf("unaccounted: %-10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
     }
     uint32_t entries = 0;
     out->entry_counter = out_read;
@@ -163,12 +163,12 @@ int main(int argc, char* const* argv) {
         if (last_time && !overwrite_output) {
             if (c.time < last_time) {
                 // we cannot allow jumping back in time
-                fprintf(stderr, "*** the output file (%s) ends at timestamp\n\t%lld\nwhere the input file (%s%s) starts at timestamp\n\t%lld\n*** writing to the output file would result in a jump back in time, which is not allowed. to do this you must do a 3-file merge, i.e. include two input files and a separate output file: mff-conv a-fmt a-name b-fmt b-name out-fmt out-name\n",
+                fprintf(stderr, "*** the output file (%s) ends at timestamp\n\t%" PRIi64 "\nwhere the input file (%s%s) starts at timestamp\n\t%" PRIi64 "\n*** writing to the output file would result in a jump back in time, which is not allowed. to do this you must do a 3-file merge, i.e. include two input files and a separate output file: mff-conv a-fmt a-name b-fmt b-name out-fmt out-name\n",
                     ca.l[ca.l.size()-1],                // output file (%s
-                    last_time,                          // ) ends at timestamp\n\t%lld
+                    last_time,                          // ) ends at timestamp\n\t%" PRIi64 "
                     ca.l[1],                            // \nwhere the input file (%s
                     ca.l.size() > 4 ? "[, ...]" : "",   // %s
-                    c.time                              // ) starts at timestamp\n\t%lld
+                    c.time                              // ) starts at timestamp\n\t%" PRIi64 "
                 );
                 exit(1);
             }
@@ -186,7 +186,7 @@ int main(int argc, char* const* argv) {
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
-            printf(" %5.1f%% %s [%u -> %llu, %7.3fx]   \r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
+            printf(" %5.1f%% %s [%u -> %" PRIu64 ", %7.3fx]   \r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
             fflush(stdout);
             needs_newline = true;
             if (elapsed > 20 && now - timepoint_b > 10) {
@@ -204,20 +204,20 @@ int main(int argc, char* const* argv) {
     if (mempool_file != "") {
         c.nodes[0]->save_mempool(mempool_file);
     }
-    printf("skipped recs = %llu\n", skipped_recs);
+    printf("skipped recs = %" PRIu64 "\n", skipped_recs);
     if (c_start_time) {
         int64_t end_time = internal_time + 1800; // rounding
         int64_t elapsed = end_time - c_start_time;
         int64_t days = elapsed / 86400;
         int64_t hours = (elapsed % 86400) / 3600;
-        printf("spans over %lld days, %lld hours\n", days, hours);
+        printf("spans over %" PRIi64 " days, %" PRIi64 " hours\n", days, hours);
     }
     uint64_t total = (uint64_t)out->tell();
     uint64_t counted = total;
     for (auto& x : out->space_usage) {
         counted -= x.second;
-        printf("%10s : %-10llu (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
+        printf("%10s : %-10" PRIi64 " (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
     }
-    printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
-    printf("timestamp at end: %lld\n", out->last_time);
+    printf("unaccounted: %-10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
+    printf("timestamp at end: %" PRIi64 "\n", out->last_time);
 }

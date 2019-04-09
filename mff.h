@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <map>
+#include <inttypes.h>
 
 #include <uint256.h>
 #include <tinytx.h>
@@ -64,6 +65,7 @@ inline std::string cmd_str(CMD c) {
 }
 
 typedef uint64_t seq_t;
+#define PRIseq PRIu64
 
 class outpoint;
 class tx;
@@ -125,8 +127,8 @@ public:
 
     std::string to_string() const {
         char s[1024];
-        if (known) sprintf(s, "outpoint(known seq=%llu, n=%llu)", seq, n);
-        else       sprintf(s, "outpoint(unknown txid=%s, n=%llu)", txid.ToString().c_str(), n);
+        if (known) sprintf(s, "outpoint(known seq=%" PRIseq ", n=%" PRIu64 ")", seq, n);
+        else       sprintf(s, "outpoint(unknown txid=%s, n=%" PRIu64 ")", txid.ToString().c_str(), n);
         return s;
     }
 
@@ -392,7 +394,7 @@ public:
                 if (!server->txs.count(o.get_seq())) {
                     // the input tx was known but was purged from the system. we can no
                     // longer access this information, so we consider this a failure
-                    printf("cannot derive tx with id %s due to missing input data\n", t.id.ToString().c_str());
+                    printf("\ncannot derive tx with id %s due to missing input data [known seq=%" PRIseq ", but seq=%" PRIseq " not found in server->txs[]]\n", t.id.ToString().c_str(), o.get_seq(), o.get_seq());
                     t2.reset();
                     return t2;
                 }
@@ -476,7 +478,10 @@ public:
         }
         if (best_i >= 0) {
             bool rv = nodes[best_i]->read_entry();
-            if (rv) times[best_i] = nodes[best_i]->peek_time();
+            if (rv) {
+                times[best_i] = nodes[best_i]->peek_time();
+                if (!times[best_i]) printf("EOF node #%" PRIi64 " @ %" PRIi64 "\n", best_i, best_time);
+            }
             time = *nodes[best_i]->shared_time;
             return rv;
         }

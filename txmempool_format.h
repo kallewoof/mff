@@ -33,10 +33,10 @@ public:
     #define DEBUG_SER(args...) // printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
         DEBUG_SER("serializing %s outpoint\n", o.known ? "known" : "unknown");
-        DEBUG_SER("o.n=%llu\n", o.n);
+        DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         Serialize(s, VARINT(o.n));
         if (o.known) {
-            DEBUG_SER("o.seq = %llu\n", o.seq);
+            DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
             g_rseq_ctr[I]->seq_write(o.seq);
         } else {
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
@@ -46,10 +46,10 @@ public:
     void deserialize_outpoint(Stream& s, outpoint& o) {
         DEBUG_SER("deserializing %s outpoint\n", o.known ? "known" : "unknown");
         Unserialize(s, VARINT(o.n));
-        DEBUG_SER("o.n=%llu\n", o.n);
+        DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         if (o.known) {
             o.seq = g_rseq_ctr[I]->seq_read();
-            DEBUG_SER("o.seq = %llu\n", o.seq);
+            DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
         } else {
             Unserialize(s, o.txid);
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
@@ -62,20 +62,20 @@ public:
         DEBUG_SER("serializing tx\n");
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());   // 32
         Serialize(s, t.id);
-        DEBUG_SER("- seq: %llu\n", t.seq);
+        DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         g_rseq_ctr[I]->seq_write(t.seq);
-        DEBUG_SER("- weight: %llu\n", t.weight);            // 33   40
+        DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);            // 33   40
         Serialize(s, VARINT(t.weight));
-        DEBUG_SER("- fee: %llu\n", t.fee);                  // 34   48
+        DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);                  // 34   48
         Serialize(s, VARINT(t.fee));
         if (t.fee > 100000000ULL) {
-            fprintf(stderr, "unusually high fee %llu for txid %s\n", t.fee, t.id.ToString().c_str());
+            fprintf(stderr, "unusually high fee %" PRIu64 " for txid %s\n", t.fee, t.id.ToString().c_str());
             fprintf(stderr, "tx = %s\n", t.to_string().c_str());
         }
-        DEBUG_SER("- inputs: %llu\n", t.inputs);            // 35   50
+        DEBUG_SER("- inputs: %" PRIu64 "\n", t.inputs);            // 35   50
         Serialize(s, VARINT(t.inputs));
         for (uint64_t i = 0; i < t.inputs; ++i) {
-            DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
+            DEBUG_SER("--- input #%" PRIu64 "/%" PRIu64 "\n", i+1, t.inputs);
             DEBUG_SER("--- state: %u\n", t.state[i]);
             Serialize(s, t.state[i]);                       // 1
             if (t.state[i] == outpoint::state_coinbase) {
@@ -94,24 +94,24 @@ public:
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
         t.seq = g_rseq_ctr[I]->seq_read();
-        DEBUG_SER("- seq: %llu\n", t.seq);
+        DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         Unserialize(s, VARINT(t.weight));
-        DEBUG_SER("- weight: %llu\n", t.weight);
+        DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
         Unserialize(s, VARINT(t.fee));
-        DEBUG_SER("- fee: %llu\n", t.fee);
+        DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);
         if (t.fee > 100000000ULL) {
-            fprintf(stderr, "unusually high fee %llu for txid %s\n", t.fee, t.id.ToString().c_str());
+            fprintf(stderr, "unusually high fee %" PRIu64 " for txid %s\n", t.fee, t.id.ToString().c_str());
         }
         Unserialize(s, VARINT(t.inputs));
-        DEBUG_SER("- inputs: %llu\n", t.inputs);
+        DEBUG_SER("- inputs: %" PRIu64 "\n", t.inputs);
         t.state.resize(t.inputs);
         t.vin.resize(t.inputs);
         for (uint64_t i = 0; i < t.inputs; ++i) {
-            DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
+            DEBUG_SER("--- input #%" PRIu64 "/%" PRIu64 "\n", i+1, t.inputs);
             Unserialize(s, t.state[i]);
             DEBUG_SER("--- state: %u\n", t.state[i]);
             if (!(t.state[i] <= outpoint::state_coinbase)) {
-                fprintf(stderr, "\nbyte position %ld: t.state[i] is broken for tx %s (seq=%llu)\n", l, t.id.ToString().c_str(), t.seq);
+                fprintf(stderr, "\nbyte position %ld: t.state[i] is broken for tx %s (seq=%" PRIu64 ")\n", l, t.id.ToString().c_str(), t.seq);
             }
             assert(t.state[i] <= outpoint::state_coinbase);
             if (t.state[i] == outpoint::state_coinbase) {
@@ -149,6 +149,7 @@ public:
 
 struct queue {
     bool done = false;
+    std::string tag;
     std::atomic<uint32_t> queue_height_goal{0};
     std::atomic<uint32_t> queue_height_done{0};
     std::map<uint32_t, std::vector<seq_t>> frozen_queue;  // invalidated or confirmed queue
@@ -173,6 +174,7 @@ private:
     rseq_adapter<CAutoFile, I> serializer;
     std::vector<uint256> pending_conf_unknown;
     std::vector<seq_t> pending_conf_known;
+    std::set<uint256> pending_import;
 
     void apply_block(std::shared_ptr<block> b);
     void undo_block_at_height(uint32_t height);

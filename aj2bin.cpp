@@ -38,10 +38,10 @@ bool read_entry(FILE* in_fp, CAutoFile& out) {
     int64_t timestamp;
     uint32_t fraction;
     char action[64];
-    if (fscanf(in_fp, "%lld.%u %s ", &timestamp, &fraction, action) != 3) {
+    if (fscanf(in_fp, "%" PRIi64 ".%u %s ", &timestamp, &fraction, action) != 3) {
         return false;
     }
-    // V("%lld.%u %s\n", timestamp, fraction, action);
+    // V("%" PRIi64 ".%u %s\n", timestamp, fraction, action);
 
     char* bptr = buffer;
     size_t rem = buffer_cap;

@@ -151,7 +151,7 @@ seq_t mff_rs::touched_txid(const uint256& txid, bool count) {
             if (txs.count(seq) && counted.find(txs[seq]->id) == counted.end()) {
                 txid_hits[txs[seq]->id]++;
                 counted.insert(txs[seq]->id);
-                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%llu @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
+                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%" PRIu64 " @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
             }
             // i++;
         }
@@ -234,7 +234,7 @@ bool mff_rs::read_entry() {
                     last_seqs.push_back(prevout.get_seq());
                 }
             }
-            mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
+            mplinfo_("id=%s, seq=%" PRIu64 "\n", t->id.ToString().c_str(), t->seq);
             t->location = tx::location_in_mempool;
             if (listener) listener->tx_rec(this, *t);
             break;
@@ -249,7 +249,7 @@ bool mff_rs::read_entry() {
             if (txs.count(seq)) {
                 txs[seq]->location = tx::location_in_mempool;
             }
-            mplinfo_("seq=%llu\n", seq);
+            mplinfo_("seq=%" PRIu64 "\n", seq);
             last_seqs.push_back(seq);
             if (listener) listener->tx_in(this, *txs[seq]);
             break;
@@ -291,7 +291,7 @@ bool mff_rs::read_entry() {
             auto t = txs[seq];
             t->location = tx::location_discarded;
             t->out_reason = (tx::out_reason_enum)reason;
-            mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
+            mplinfo_("seq=%" PRIu64 ", reason=%s\n", seq, tx_out_reason_str(reason));
             if (listener) listener->tx_out(this, *txs[seq], t->out_reason);
             break;
         }
@@ -319,7 +319,7 @@ bool mff_rs::read_entry() {
             mplinfo_("--- state = %d (cause_known = %d)\n", state, cause_known);
             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
                 read_txseq_keep(cause_known, tx_cause, replacement_txid);
-                mplinfo_("--- read_txseq(%d, tx_cause) = %llu\n", cause_known, tx_cause);
+                mplinfo_("--- read_txseq(%d, tx_cause) = %" PRIu64 "\n", cause_known, tx_cause);
                 last_seqs.push_back(tx_cause);
                 replacement_seq = tx_cause;
                 mplinfo_("--- invalid replacement = %s\n", replacement_txid.ToString().c_str());
@@ -327,7 +327,7 @@ bool mff_rs::read_entry() {
             mplinfo_("----- tx deserialization begins -----\n");
             long txhex_start = ftell(in_fp);
             in >> last_invalidated_tx;
-            // printf("last invalidated tx = %llu:%s\n", tx_invalid, last_invalidated_tx.hash.ToString().c_str());
+            // printf("last invalidated tx = %" PRIu64 ":%s\n", tx_invalid, last_invalidated_tx.hash.ToString().c_str());
             long txhex_end = ftell(in_fp);
             fseek(in_fp, txhex_start, SEEK_SET);
             last_invalidated_txhex.resize(txhex_end - txhex_start);
@@ -340,7 +340,7 @@ bool mff_rs::read_entry() {
                 t->invalid_reason = (tx::invalid_reason_enum)state;
                 if (txs.count(tx_invalid)) last_invalidated_tx.hash = txs[tx_invalid]->id;
             }
-            mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
+            mplinfo_("seq=%" PRIu64 ", state=%s, cause=%" PRIu64 ", tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
             mplinfo_("----- tx invalid deserialization ends -----\n");
             if (listener) listener->tx_invalid(this, *txs[tx_invalid], last_invalidated_txhex, txs[tx_invalid]->invalid_reason, replacement_seq ? &txs[replacement_seq]->id : replacement_txid.IsNull() ? nullptr : &replacement_txid);
             // out.debugme(false);
@@ -359,10 +359,10 @@ bool mff_rs::read_entry() {
                 if (listener) assert(!"not implemented");
                 mplinfo_("unknown, height=%u\n", height);
                 uint64_t count = ReadCompactSize(in);
-                mplinfo("%llu transactions\n", count);
+                mplinfo("%" PRIu64 " transactions\n", count);
                 for (uint64_t i = 0; i < count; ++i) {
                     uint64_t seq = ReadCompactSize(in);
-                    mplinfo("%llu: seq = %llu\n", i, seq);
+                    mplinfo("%" PRIu64 ": seq = %" PRIu64 "\n", i, seq);
                     if (seq) {
                         assert(txs.count(seq));
                         last_seqs.push_back(seq);

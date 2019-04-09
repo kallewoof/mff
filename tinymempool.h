@@ -155,7 +155,7 @@ public:
                     inputs.insert(vin.prevout.hash);
                 }
             }
-            printf("ancestry size = %zu, inputs size = %zu; max inputs = %u; tx count = %zu, input sum = %llu, avg in/tx = %.2f\n", ancestry.size(), inputs.size(), max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
+            printf("ancestry size = %zu, inputs size = %zu; max inputs = %u; tx count = %zu, input sum = %" PRIu64 ", avg in/tx = %.2f\n", ancestry.size(), inputs.size(), max_ins, entry_map.size(), sum_ins, (float)sum_ins / entry_map.size());
             assert(ancestry.size() == inputs.size());
         }
         READWRITE(entry_map);

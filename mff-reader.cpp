@@ -139,10 +139,10 @@ int main(int argc, char* const* argv) {
                         extra = " (?)";
                         // printf(" (???: ");
                     }
-                    printf(" (first seen %s%s - %llu vbytes, %llu fee, %.3lf fee rate (s/vbyte), block #%u)\n", txid_str(t->id).c_str(), extra.c_str(), t->vsize(), t->fee, t->feerate(), reader->active_chain.height);
+                    printf(" (first seen %s%s - %" PRIu64 " vbytes, %" PRIu64 " fee, %.3lf fee rate (s/vbyte), block #%u)\n", txid_str(t->id).c_str(), extra.c_str(), t->vsize(), t->fee, t->feerate(), reader->active_chain.height);
                     // const mff::tx& t = *reader->txs[reader->seqs[txid]];
-                    // printf(" (txid seq=%llu) %s", reader->seqs[txid], t->to_string().c_str());
-                    // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %llu = %s", x.get_seq(), reader->txs[x.get_seq()]->id.ToString().c_str());
+                    // printf(" (txid seq=%" PRIu64 ") %s", reader->seqs[txid], t->to_string().c_str());
+                    // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %" PRIu64 " = %s", x.get_seq(), reader->txs[x.get_seq()]->id.ToString().c_str());
                     // we don't wanna bother with tracking TX_REC for multiple txids so we just break the loop here
                     break;
                 } else if (reader->last_cmd == mff::BLOCK_CONF) {
@@ -171,7 +171,7 @@ int main(int argc, char* const* argv) {
     int64_t htotal = elapsed / 3600;
     int64_t days = elapsed / 86400;
     int64_t hours = (elapsed % 86400) / 3600;
-    printf("%llu entries over %lld days, %lld hours parsed in %lld seconds (%lld entries/s, or %lld hours/real second)\n", entries, days, hours, end_time - start_time, entries / (end_time - start_time), htotal / (end_time - start_time));
+    printf("%" PRIu64 " entries over %" PRIi64 " days, %" PRIi64 " hours parsed in %" PRIi64 " seconds (%" PRIi64 " entries/s, or %" PRIi64 " hours/real second)\n", entries, days, hours, end_time - start_time, entries / (end_time - start_time), htotal / (end_time - start_time));
     if (enable_counting) {
         printf("txid hits:\n");
         uint32_t max = 0;
@@ -191,8 +191,8 @@ int main(int argc, char* const* argv) {
     for (auto& x : reader->space_usage) {
         counted -= x.second;
         uint64_t count = reader->cmd_usage[x.first];
-        printf("%10s : %-10llu (%5.2f%%) [%-8llu (%5.2f%%)]\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total, count, 100.0 * count / entries);
+        printf("%10s : %-10" PRIi64 " (%5.2f%%) [%-8" PRIi64 " (%5.2f%%)]\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total, count, 100.0 * count / entries);
     }
-    printf("unaccounted: %-10llu (%.2f%%)\n", counted, 100.0 * counted / total);
+    printf("unaccounted: %-10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
     delete reader;
 }

@@ -107,7 +107,7 @@ seq_t mff_ajb::touched_txid(const uint256& txid, bool count) {
             if (txs.count(seq) && counted.find(txs[seq]->id) == counted.end()) {
                 txid_hits[txs[seq]->id]++;
                 counted.insert(txs[seq]->id);
-                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%llu @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
+                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%" PRIu64 " @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
             }
             // i++;
         }
@@ -169,7 +169,7 @@ int64_t mff_ajb::get_output_value(const uint256& txid, int n)
     static uint64_t known_count = 0, amap_count = 0, rpc_count = 0, total_count = 0;
     total_count++;
     if ((total_count % 100000) == 0) {
-        printf("[ known=%llu amap=%llu rpc=%llu (total=%llu) ]                  \n", known_count, amap_count, rpc_count, total_count);
+        printf("[ known=%" PRIu64 " amap=%" PRIu64 " rpc=%" PRIu64 " (total=%" PRIu64 ") ]                  \n", known_count, amap_count, rpc_count, total_count);
     }
     // Known?
     if (seqs.count(txid)) {
@@ -182,7 +182,7 @@ int64_t mff_ajb::get_output_value(const uint256& txid, int n)
         int64_t amount = amap::output_amount(txid, n);
         if (amount != -1) {
             amap_count++;
-            // printf("%s::%d = %lld\n", txid.ToString().c_str(), n, amount);
+            // printf("%s::%d = %" PRIi64 "\n", txid.ToString().c_str(), n, amount);
             return amount; // got it!
         }
     }
@@ -209,7 +209,7 @@ std::shared_ptr<tx> mff_ajb::register_tx(tiny::tx& tt) {
     t->id = tt.hash;
     t->seq = nextseq++;
     DSL(t->seq, "register_entry\n");
-    // printf("tx-reg: %s <=> %llu\n", t->id.ToString().c_str(), t->seq);
+    // printf("tx-reg: %s <=> %" PRIu64 "\n", t->id.ToString().c_str(), t->seq);
 
     t->weight = tt.GetWeight();
     if (tt.IsCoinBase()) {
@@ -221,7 +221,7 @@ std::shared_ptr<tx> mff_ajb::register_tx(tiny::tx& tt) {
         }
         int64_t in_amount = get_tx_input_amount(tt);
         if (in_amount < sum_out) {
-            fprintf(stderr, "*** in < out: %lld < %lld\n", in_amount, sum_out);
+            fprintf(stderr, "*** in < out: %" PRIi64 " < %" PRIi64 "\n", in_amount, sum_out);
         }
         assert(in_amount >= sum_out);
         t->fee = in_amount - sum_out; // rpc->get_tx_input_amount(tt) - sum_out;
@@ -243,7 +243,7 @@ std::shared_ptr<tx> mff_ajb::register_tx(tiny::tx& tt) {
             t->state[i] = confirmed ? outpoint::state_confirmed : known ? outpoint::state_known : outpoint::state_unknown;
         }
         t->vin[i] = known ? outpoint(prevout.n, seq) : outpoint(prevout.n, prevout.hash);
-        // printf("- vin %llu = %s n=%d, seq=%llu, hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
+        // printf("- vin %" PRIu64 " = %s n=%d, seq=%" PRIu64 ", hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
     }
     t->amounts.clear();
     for (const tiny::txout& o : tt.vout)

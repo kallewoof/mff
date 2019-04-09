@@ -5,6 +5,8 @@
 #ifndef BITCOIN_TINYTX_H
 #define BITCOIN_TINYTX_H
 
+#include <inttypes.h>
+
 #include <uint256.h>
 
 #ifdef TINY_MINIMAL
@@ -33,9 +35,11 @@ namespace tiny {
 typedef int64_t amount;
 static const amount COIN = 100000000;
 
+#define PRIamt PRIi64
+
 inline std::string coin_str(amount sat) {
     char buf[128];
-    char* pbuf = buf + sprintf(buf, "%lld.%08lld", sat / COIN, sat % COIN);
+    char* pbuf = buf + sprintf(buf, "%" PRIamt ".%08" PRIamt, sat / COIN, sat % COIN);
     return std::string(buf, pbuf);
 }
 

@@ -68,7 +68,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
     if (timerel) {\
         uint8_t r; \
         in >> r; \
-        zero_times += !r; one_times += r == 1; other_times += r > 1; if (((zero_times + one_times | other_times) % 10000) == 0) printf("times: %llu 0, %llu 1, %llu remaining\n", zero_times, one_times, other_times); \
+        zero_times += !r; one_times += r == 1; other_times += r > 1; if (((zero_times + one_times | other_times) % 10000) == 0) printf("times: %" PRIu64 " 0, %" PRIu64 " 1, %" PRIu64 " remaining\n", zero_times, one_times, other_times); \
         t = last_time + r; \
     } else { \
         static_assert(sizeof(t) == 8, #t " is of wrong type! Must be int64_t!"); \
@@ -188,7 +188,7 @@ mff_simpletime_rseq<I>::mff_simpletime_rseq(FILE* fp, bool readonly) : in_fp(fp)
 template<int I>
 mff_simpletime_rseq<I>::~mff_simpletime_rseq() {
     g_simpletime_rseq_ctr[I] = nullptr;
-    printf("times: %llu 0, %llu 1, %llu remaining\n", zero_times, one_times, other_times);
+    printf("times: %" PRIu64 " 0, %" PRIu64 " 1, %" PRIu64 " remaining\n", zero_times, one_times, other_times);
 }
 
 inline bool get_block(uint256 blockhex, tiny::block& b, uint32_t& height) {
@@ -222,7 +222,7 @@ void mff_simpletime_rseq<I>::apply_block(std::shared_ptr<block> b) {
             DTX(txs[x]->id, "supposedly in block %u (known)\n", hx);
             auto it = in_block_txid.find(txs[x]->id);
             if (!(it != in_block_txid.end())) {
-                printf("%s (seq=%llu) not found in block %u, but listed in b for %u\n", txs[x]->id.ToString().c_str(), x, hx, b->height);
+                printf("%s (seq=%" PRIu64 ") not found in block %u, but listed in b for %u\n", txs[x]->id.ToString().c_str(), x, hx, b->height);
             }
             assert(it != in_block_txid.end());
             in_block_txid.erase(it);
@@ -323,7 +323,7 @@ seq_t mff_simpletime_rseq<I>::touched_txid(const uint256& txid, bool count) {
             if (txs.count(seq) && counted.find(txs[seq]->id) == counted.end()) {
                 txid_hits[txs[seq]->id]++;
                 counted.insert(txs[seq]->id);
-                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%llu @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
+                // if (foo == txs[seq]->id) printf("%ld CALL %d: %s seq=%" PRIu64 " @%d : %u\n", ftell(in_fp), calls, cmd_str(last_cmd).c_str(), seq, i, txid_hits[txs[seq]->id]);
             }
             // i++;
         }
@@ -414,12 +414,12 @@ bool mff_simpletime_rseq<I>::read_entry() {
                 seq = seq_read();
                 uint64_t offset;
                 in >> VARINT(offset);
-                // printf("seek point = pos - offset = %ld - %llu = %llu\n", pos, offset, pos - offset);
+                // printf("seek point = pos - offset = %ld - %" PRIu64 " = %" PRIu64 "\n", pos, offset, pos - offset);
                 offset = pos - offset;
                 pos = ftell(in_fp); // for seek-back post-deserialization
                 fseek(in_fp, (long)offset, SEEK_SET);
                 // if (rec_revmap.count(offset)) {
-                //     printf("offset is for txid %s = %llu\n", rec_revmap[offset].ToString().c_str(), tx_recs[rec_revmap[offset]].seq);
+                //     printf("offset is for txid %s = %" PRIu64 "\n", rec_revmap[offset].ToString().c_str(), tx_recs[rec_revmap[offset]].seq);
                 // } else {
                 //     uint64_t closest = 0; --closest;
                 //     uint64_t closest_pos = 0;
@@ -430,7 +430,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
                 //             closest = diff;
                 //         }
                 //     }
-                //     printf("command starting at %ld: offset not found. closest is for txid %s but\n- given pos = %llu\n- actual pos = %llu\n", use_start, rec_revmap[closest_pos].ToString().c_str(), offset, closest_pos);
+                //     printf("command starting at %ld: offset not found. closest is for txid %s but\n- given pos = %" PRIu64 "\n- actual pos = %" PRIu64 "\n", use_start, rec_revmap[closest_pos].ToString().c_str(), offset, closest_pos);
                 // }
             }
             long rec_pos = ftell(in_fp);
@@ -451,7 +451,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
             }
             DSL(t->seq, "TX_REC\n");
             if (txs.count(t->seq)) {
-                printf("force-thawing %llu as it is being replaced!\n", t->seq);
+                printf("force-thawing %" PRIu64 " as it is being replaced!\n", t->seq);
                 tx_thaw(t->seq); // this removes the tx from chill/freeze lists
                 seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
             }
@@ -472,7 +472,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
                         for (int i = 0; i < steps; i++) ++it;
                         p[j] = *it;
                     }
-                    // nlprintf("*** [READ] REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
+                    // nlprintf("*** [READ] REREC %" PRIu64 " (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
                     if (frozen && frozen_max < blocks_ago) {
                         frozen_max = blocks_ago;
                         printf("****** NEW FROZEN MAX FOR TXID=%s ******\n", t->id.ToString().c_str());
@@ -487,7 +487,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
                     last_seqs.push_back(prevout.get_seq());
                 }
             }
-            // mplinfo_("id=%s, seq=%llu\n", t->id.ToString().c_str(), t->seq);
+            // mplinfo_("id=%s, seq=%" PRIu64 "\n", t->id.ToString().c_str(), t->seq);
             t->location = tx::location_in_mempool;
             if (listener) listener->tx_rec(this, *t);
             break;
@@ -498,7 +498,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
             uint64_t seq = seq_read();
             DSL(seq, "TX_IN\n");
             if (!txs.count(seq)) {
-                fprintf(stderr, "*** missing seq=%llu in txs\n", seq);
+                fprintf(stderr, "*** missing seq=%" PRIu64 " in txs\n", seq);
             }
             assert(txs.count(seq));
             last_recorded_tx = txs[seq];
@@ -506,7 +506,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
                 txs[seq]->location = tx::location_in_mempool;
                 tx_thaw(seq);
             }
-            mplinfo_("seq=%llu\n", seq);
+            mplinfo_("seq=%" PRIu64 "\n", seq);
             last_seqs.push_back(seq);
             if (listener) listener->tx_in(this, *txs[seq]);
             break;
@@ -545,7 +545,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
                 break;
             }
             if (!txs.count(seq)) {
-                fprintf(stderr, "*** TX_OUT with seq=%llu (txid=%s), but txs[%llu] not found! ***   \n", seq, txid.ToString().c_str(), seq);
+                fprintf(stderr, "*** TX_OUT with seq=%" PRIu64 " (txid=%s), but txs[%" PRIu64 "] not found! ***   \n", seq, txid.ToString().c_str(), seq);
             }
             assert(txs.count(seq));
             last_seqs.push_back(seq);
@@ -555,7 +555,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
             t->location = tx::location_discarded;
             t->out_reason = (tx::out_reason_enum)reason;
             tx_chill(seq);
-            mplinfo_("seq=%llu, reason=%s\n", seq, tx_out_reason_str(reason));
+            mplinfo_("seq=%" PRIu64 ", reason=%s\n", seq, tx_out_reason_str(reason));
             if (listener) listener->tx_out(this, *txs[seq], t->out_reason);
             break;
         }
@@ -582,7 +582,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
             mplinfo_("--- state = %d (cause_known = %d)\n", state, cause_known);
             if (state != tx::invalid_unknown && state != tx::invalid_reorg) {
                 read_txseq_keep(cause_known, tx_cause, replacement_txid);
-                mplinfo_("--- read_txseq(%d, tx_cause) = %llu\n", cause_known, tx_cause);
+                mplinfo_("--- read_txseq(%d, tx_cause) = %" PRIu64 "\n", cause_known, tx_cause);
                 last_seqs.push_back(tx_cause);
                 replacement_seq = tx_cause;
             }
@@ -607,7 +607,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
                     assert(last_invalidated_tx.hash == txs[tx_invalid]->id);
                 }
             }
-            mplinfo_("seq=%llu, state=%s, cause=%llu, tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
+            mplinfo_("seq=%" PRIu64 ", state=%s, cause=%" PRIu64 ", tx_data=%s\n", tx_invalid, tx_invalid_state_str(state), tx_cause, last_invalidated_tx.ToString().c_str());
             mplinfo_("----- tx invalid deserialization ends -----\n");
             if (listener) listener->tx_invalid(this, *txs[tx_invalid], last_invalidated_txhex, txs[tx_invalid]->invalid_reason, replacement_seq ? &txs[replacement_seq]->id : replacement_txid.IsNull() ? nullptr : &replacement_txid);
             // out.debugme(false);
@@ -626,10 +626,10 @@ bool mff_simpletime_rseq<I>::read_entry() {
                 if (listener) assert(!"not implemented");
                 mplinfo_("unknown, height=%u\n", height);
                 uint64_t count = ReadCompactSize(in);
-                mplinfo("%llu transactions\n", count);
+                mplinfo("%" PRIu64 " transactions\n", count);
                 for (uint64_t i = 0; i < count; ++i) {
                     uint64_t seq = seq_read();
-                    mplinfo("%llu: seq = %llu\n", i, seq);
+                    mplinfo("%" PRIu64 ": seq = %" PRIu64 "\n", i, seq);
                     if (seq) {
                         assert(txs.count(seq));
                         last_seqs.push_back(seq);
@@ -706,7 +706,7 @@ const std::shared_ptr<tx> mff_simpletime_rseq<I>::register_entry(const tiny::mem
         bool confirmed = known && txs[seq]->location == tx::location_confirmed;
         t->state[i] = confirmed ? outpoint::state_confirmed : known ? outpoint::state_known : outpoint::state_unknown;
         t->vin[i] = known ? outpoint(prevout.n, seq) : outpoint(prevout.n, prevout.hash);
-        // printf("- vin %llu = %s n=%d, seq=%llu, hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
+        // printf("- vin %" PRIu64 " = %s n=%d, seq=%" PRIu64 ", hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
     }
 
     txs[t->seq] = t;
@@ -726,7 +726,7 @@ const std::shared_ptr<tx> mff_simpletime_rseq<I>::register_entry(const tiny::mem
                 for (int i = 0; i < steps; i++) ++it;
                 p[j] = *it;
             }
-            nlprintf("*** [REG] REREC %llu (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
+            nlprintf("*** [REG] REREC %" PRIu64 " (discarded (%s) %u blocks ago; +%u for 25%%, +%u for 50%%, +%u for 75%%) ***\n", rerecs, frozen ? "frozen" : "chilled", blocks_ago, p[0], p[1], p[2]);
             if (frozen && frozen_max < blocks_ago) {
                 frozen_max = blocks_ago;
                 printf("****** NEW FROZEN MAX FOR TXID=%s ******\n", t->id.ToString().c_str());
@@ -758,7 +758,7 @@ void mff_simpletime_rseq<I>::add_entry(std::shared_ptr<const tiny::mempool_entry
         DSL(t->seq, "add_entry() unknown\n");
         bool debugme = known || ftell(in_fp) == 62344248;
         #define oij(args...) if (debugme) printf(args)
-        oij("serializing %s tx %s (%llu) at pos %ld\n", known ? "offset-known" : "unknown", tref->hash.ToString().c_str(), t->seq, ftell(in_fp));
+        oij("serializing %s tx %s (%" PRIu64 ") at pos %ld\n", known ? "offset-known" : "unknown", tref->hash.ToString().c_str(), t->seq, ftell(in_fp));
         b = prot(CMD::TX_REC, known);
         start(b);
         long pos = ftell(in_fp);
@@ -766,13 +766,13 @@ void mff_simpletime_rseq<I>::add_entry(std::shared_ptr<const tiny::mempool_entry
         if (known) {
             seq_write(t->seq);
             uint64_t offset = pos - tx_recs[tref->hash].pos;
-            oij("known. offset = %ld - %ld = %llu\n", pos, tx_recs[tref->hash].pos, offset);
+            oij("known. offset = %ld - %ld = %" PRIu64 "\n", pos, tx_recs[tref->hash].pos, offset);
             in << VARINT(offset);
         } else {
             oij("unknown. serializing tx\n");
             serializer.serialize_tx(in, *t);
             if (seekable) {
-                oij("tx_recs[%s] = {%ld, %llu}\n", tref->hash.ToString().c_str(), pos, t->seq);
+                oij("tx_recs[%s] = {%ld, %" PRIu64 "}\n", tref->hash.ToString().c_str(), pos, t->seq);
                 tx_recs[tref->hash] = {pos, t->seq};
                 // printf("%s @ %ld\n", tref->hash.ToString().c_str(), pos);
             }
@@ -782,7 +782,7 @@ void mff_simpletime_rseq<I>::add_entry(std::shared_ptr<const tiny::mempool_entry
 
 template<int I>
 inline void mff_simpletime_rseq<I>::tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const uint256& txid, uint8_t reason) {
-    mplinfo("TX_OUT %s %llu %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_out_reason_str(reason));
+    mplinfo("TX_OUT %s %" PRIu64 " %s [%s]\n", known ? "known" : "new", seq, t->id.ToString().c_str(), tx_out_reason_str(reason));
     if (!known) {
         // an unknown transaction is being discarded, which tells us basically nothing so we skip it
         return;
@@ -801,7 +801,7 @@ inline void mff_simpletime_rseq<I>::tx_out(bool known, seq_t seq, std::shared_pt
 template<int I>
 inline void mff_simpletime_rseq<I>::tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause) {
     // out.debugme(true);
-    mplinfo("TX_INVALID %s %llu %s [%s]\n", known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(state));
+    mplinfo("TX_INVALID %s %" PRIu64 " %s [%s]\n", known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(state));
     uint8_t b = prot(CMD::TX_INVALID, known);
     if (known) {
         t->location = tx::location_invalid;
@@ -929,7 +929,7 @@ void mff_simpletime_rseq<I>::push_block(int height, uint256 hash, const std::vec
             DTX(txs[x]->id, "supposedly in block %u (known)\n", height);
             auto it = in_block_txid.find(txs[x]->id);
             if (!(it != in_block_txid.end())) {
-                printf("%s (seq=%llu) not found in block %u, but listed in b for %u\n", txs[x]->id.ToString().c_str(), x, height, blk->height);
+                printf("%s (seq=%" PRIu64 ") not found in block %u, but listed in b for %u\n", txs[x]->id.ToString().c_str(), x, height, blk->height);
             }
             assert(it != in_block_txid.end());
             in_block_txid.erase(it);
@@ -980,8 +980,8 @@ inline void mff_simpletime_rseq<I>::tx_rec(seqdict_server* source, const tx& x) 
         mplinfo_(": failure to import; ignoring\n");
         return;
     }
-    mplinfo_(": seq=%llu\n", t->seq);
-    DTX(x.id, "TX_REC with seq=%llu\n", t->seq);
+    mplinfo_(": seq=%" PRIu64 "\n", t->seq);
+    DTX(x.id, "TX_REC with seq=%" PRIu64 "\n", t->seq);
     bool known = seekable && tx_recs.count(x.id);
     uint8_t b = prot(CMD::TX_REC, known);
     start(b);
@@ -991,7 +991,7 @@ inline void mff_simpletime_rseq<I>::tx_rec(seqdict_server* source, const tx& x) 
         uint64_t offset = pos - tx_recs[x.id].pos;
         seq_write(t->seq);
         in << VARINT(offset);
-        // printf("%ld: known tx %s=%llu at pos %ld - %ld = %llu\n", pos, t->id.ToString().c_str(), t->seq, pos, tx_recs[x.id].pos, offset);
+        // printf("%ld: known tx %s=%" PRIu64 " at pos %ld - %ld = %" PRIu64 "\n", pos, t->id.ToString().c_str(), t->seq, pos, tx_recs[x.id].pos, offset);
     } else {
         serializer.serialize_tx(in, *t);
         if (seekable) tx_recs[x.id] = {pos, t->seq};
@@ -1008,7 +1008,7 @@ inline void mff_simpletime_rseq<I>::tx_in(seqdict_server* source, const tx& x) {
         mplinfo_(": unknown to us, recording\n");
         fprintf(stderr, "we do not allow inconsistencies between known and unknown between MFF-based conversions:\n"
             "LOCAL  seq=0\n"
-            "SOURCE seq=%llu txid=%s\n", source->seqs[x.id], x.id.ToString().c_str()
+            "SOURCE seq=%" PRIu64 " txid=%s\n", source->seqs[x.id], x.id.ToString().c_str()
         );
         assert(!"invalid source or buggy destination");
         // we do NOT know about this one. let's record it
@@ -1017,7 +1017,7 @@ inline void mff_simpletime_rseq<I>::tx_in(seqdict_server* source, const tx& x) {
     }
 
     auto t = txs[seqs[x.id]];
-    mplinfo_(": seq=%llu; location=%u (->%u)\n", t->seq, t->location, tx::location_in_mempool);
+    mplinfo_(": seq=%" PRIu64 "; location=%u (->%u)\n", t->seq, t->location, tx::location_in_mempool);
     if (t->location != tx::location_in_mempool) {
         t->location = tx::location_in_mempool;
         tx_thaw(seqs[x.id]);
@@ -1039,7 +1039,7 @@ inline void mff_simpletime_rseq<I>::tx_out(seqdict_server* source, const tx& x, 
         return;
     }
 
-    mplinfo_(": seq=%llu\n", seqs[x.id]);
+    mplinfo_(": seq=%" PRIu64 "\n", seqs[x.id]);
     tx_out(true, seqs[x.id], txs[seqs[x.id]], x.id, (uint8_t)reason);
     // uint8_t b = prot(CMD::TX_OUT, true);
     // auto t = txs[seqs[x.id]];
@@ -1060,7 +1060,7 @@ inline void mff_simpletime_rseq<I>::tx_invalid(seqdict_server* source, const tx&
     auto t = known ? txs[seq] : nullptr;
 
     long y = showinfo ? ftell(in_fp) : 0;
-    mplinfo("%ld: TX_INVALID %s %llu %s [%s]\n", y, known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(reason));
+    mplinfo("%ld: TX_INVALID %s %" PRIu64 " %s [%s]\n", y, known ? "known" : "new", seq, t ? t->id.ToString().c_str() : "???", tx_invalid_state_str(reason));
 
     uint8_t b = prot(CMD::TX_INVALID, known);
     if (known) {
@@ -1218,7 +1218,7 @@ inline void mff_simpletime_rseq<I>::update_queues() {
     //         printf("%-6u : %4zu %4zu\n", h, f, c);
     //     } else if (h == height - 5) printf(":::::: : :::: ::::\n");
     // }
-    // printf("%zu/%llu (%.2f%%) known transactions in memory\n", txs.size(), nextseq, 100.0 * txs.size() / nextseq);
+    // printf("%zu/%" PRIu64 " (%.2f%%) known transactions in memory\n", txs.size(), nextseq, 100.0 * txs.size() / nextseq);
 }
 
 template void mff_simpletime_rseq<0>::apply_block(std::shared_ptr<block> b);

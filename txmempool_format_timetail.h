@@ -29,10 +29,10 @@ public:
     #define DEBUG_SER(args...) //printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
         DEBUG_SER("serializing %s outpoint\n", o.known ? "known" : "unknown");
-        DEBUG_SER("o.n=%llu\n", o.n);
+        DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         Serialize(s, COMPACTSIZE(o.n));
         if (o.known) {
-            DEBUG_SER("o.seq = %llu\n", o.seq);
+            DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
             g_rseq_tt_ctr[I]->seq_write(o.seq);
         } else {
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
@@ -42,10 +42,10 @@ public:
     void deserialize_outpoint(Stream& s, outpoint& o) {
         DEBUG_SER("deserializing %s outpoint\n", o.known ? "known" : "unknown");
         Unserialize(s, COMPACTSIZE(o.n));
-        DEBUG_SER("o.n=%llu\n", o.n);
+        DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         if (o.known) {
             o.seq = g_rseq_tt_ctr[I]->seq_read();
-            DEBUG_SER("o.seq = %llu\n", o.seq);
+            DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
         } else {
             Unserialize(s, o.txid);
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
@@ -55,16 +55,16 @@ public:
         DEBUG_SER("serializing tx\n");
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
         Serialize(s, t.id);
-        DEBUG_SER("- seq: %llu\n", t.seq);
+        DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         g_rseq_tt_ctr[I]->seq_write(t.seq);
-        DEBUG_SER("- weight: %llu\n", t.weight);
+        DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
         Serialize(s, COMPACTSIZE(t.weight));
-        DEBUG_SER("- fee: %llu\n", t.fee);
+        DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);
         Serialize(s, COMPACTSIZE(t.fee));
-        DEBUG_SER("- inputs: %llu\n", t.inputs);
+        DEBUG_SER("- inputs: %" PRIu64 "\n", t.inputs);
         Serialize(s, COMPACTSIZE(t.inputs));
         for (uint64_t i = 0; i < t.inputs; ++i) {
-            DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
+            DEBUG_SER("--- input #%" PRIu64 "/%" PRIu64 "\n", i+1, t.inputs);
             DEBUG_SER("--- state: %u\n", t.state[i]);
             Serialize(s, t.state[i]);
             if (t.state[i] == outpoint::state_coinbase) {
@@ -82,17 +82,17 @@ public:
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
         t.seq = g_rseq_tt_ctr[I]->seq_read();
-        DEBUG_SER("- seq: %llu\n", t.seq);
+        DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         Unserialize(s, COMPACTSIZE(t.weight));
-        DEBUG_SER("- weight: %llu\n", t.weight);
+        DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
         Unserialize(s, COMPACTSIZE(t.fee));
-        DEBUG_SER("- fee: %llu\n", t.fee);
+        DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);
         Unserialize(s, COMPACTSIZE(t.inputs));
-        DEBUG_SER("- inputs: %llu\n", t.inputs);
+        DEBUG_SER("- inputs: %" PRIu64 "\n", t.inputs);
         t.state.resize(t.inputs);
         t.vin.resize(t.inputs);
         for (uint64_t i = 0; i < t.inputs; ++i) {
-            DEBUG_SER("--- input #%llu/%llu\n", i+1, t.inputs);
+            DEBUG_SER("--- input #%" PRIu64 "/%" PRIu64 "\n", i+1, t.inputs);
             Unserialize(s, t.state[i]);
             DEBUG_SER("--- state: %u\n", t.state[i]);
             assert(t.state[i] <= outpoint::state_coinbase);
