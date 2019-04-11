@@ -6,11 +6,7 @@
 #include <tinytx.h>
 
 #include <txmempool_format_rs.h>
-
-// #define DEBUG_SEQ 14937
-#define DSL(s, fmt...) // if (s == DEBUG_SEQ) { printf("[SEQ] " fmt); }
-// #define l(args...) if (active_chain.height == 521703) { printf(args); }
-// #define l1(args...) if (active_chain.height == 521702) { printf(args); }
+#include <txmempool_debugging.h>
 
 namespace mff {
 

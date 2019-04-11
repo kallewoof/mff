@@ -6,6 +6,7 @@
 #include <txmempool_format_ajb.h>
 #include <txmempool_format_timetail.h>
 #include <txmempool_format_simpletime.h>
+#include <txmempool_format_relseq.h>
 #include <cliargs.h>
 #include <tinytx.h>
 #include <tinyrpc.h>
@@ -19,13 +20,31 @@ std::string time_string(int64_t time) {
 }
 
 inline mff::mff* alloc_mff_from_format(const std::string& fmt, const std::string& path, bool readonly) {
-    static size_t rseq_idx = 0;
-    if (fmt == "mff") {
-        rseq_idx++;
-        if (rseq_idx == 1) return new mff::mff_rseq<0>(path, readonly);
-        else if (rseq_idx == 2) return new mff::mff_rseq<1>(path, readonly);
-        else return new mff::mff_rseq<2>(path, readonly);
+    #define ifexpr_static_multi(suffix, name) \
+    if (fmt == name) { \
+        static size_t idx = 0; \
+        idx++; \
+        if (idx == 1) return new mff::mff_##suffix<0>(path, readonly); \
+        else if (idx == 2) return new mff::mff_##suffix<1>(path, readonly); \
+        else return new mff::mff_##suffix<2>(path, readonly); \
     }
+
+    ifexpr_static_multi(fr, "mff")
+    else ifexpr_static_multi(rseq, "relseq")
+    //
+    // static size_t rseq_idx = 0;
+    // static size_t fr_idx = 0;
+    // if (fmt == "mff") {
+    //     fr_idx++;
+    //     if (fr_idx == 1) return new mff::mff_rseq<0>(path, readonly);
+    //     else if (rseq_idx == 2) return new mff::mff_rseq<1>(path, readonly);
+    //     else return new mff::mff_rseq<2>(path, readonly);
+    // } else if (fmt == "relseq") {
+    //     rseq_idx++;
+    //     if (rseq_idx == 1) return new mff::mff_rseq<0>(path, readonly);
+    //     else if (rseq_idx == 2) return new mff::mff_rseq<1>(path, readonly);
+    //     else return new mff::mff_rseq<2>(path, readonly);
+    // }
     else if (fmt == "mff-tt") return new mff::mff_rseq_tt<0>(path, readonly);
     else if (fmt == "mff-rs") return new mff::mff_rs(path, readonly);
     else if (fmt == "mff-st") return new mff::mff_simpletime_rseq<0>(path, readonly);
@@ -56,6 +75,7 @@ int main(int argc, char* const* argv) {
             "  mff-tt    Time-tail MFF (Rev 2018-05-27)\n"
             "  mff-rs    Reused sequence based Memory File Format\n"
             "  mff-st    Simple-time MFF (Rev 2018-06-08)\n"
+            "  relseq    Relative sequence based MFF (Rev 2019-04-09)\n"
             "  aj-dump   AJ mempool history dump (ZMQ)\n"
             "  ajb       Binary AJ mempool history dump\n"
         );
@@ -186,7 +206,7 @@ int main(int argc, char* const* argv) {
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
-            printf(" %5.1f%% %s [%u -> %" PRIu64 ", %7.3fx]   \r", done, time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
+            printf(" %5.1f%% %6u %s [%u -> %" PRIu64 ", %7.3fx]   \r", done, out->blk_tell(), time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
             fflush(stdout);
             needs_newline = true;
             if (elapsed > 20 && now - timepoint_b > 10) {

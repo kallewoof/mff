@@ -2,8 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TXMEMPOOL_FORMAT_SIMPLETIME_H
-#define BITCOIN_TXMEMPOOL_FORMAT_SIMPLETIME_H
+#ifndef BITCOIN_TXMEMPOOL_FORMAT_RELSEQ_H
+#define BITCOIN_TXMEMPOOL_FORMAT_RELSEQ_H
+
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 #include <mff.h>
 #include <serialize.h>
@@ -13,27 +17,29 @@ extern uint64_t skipped_recs;
 
 namespace mff {
 
-class simpletime_rseq_container {
+class rseq_container {
 public:
     virtual long tell() = 0;
     virtual seq_t seq_read() = 0;
     virtual void seq_write(seq_t seq) = 0;
 };
 
-#define MAX_RSEQ_CONTAINERS_SIMPLETIME 2
-extern simpletime_rseq_container* g_simpletime_rseq_ctr[MAX_RSEQ_CONTAINERS_SIMPLETIME];
+#define MAX_RSEQ_CONTAINERS 3
+extern rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
 
 template <typename Stream, int I>
-class simpletime_rseq_adapter: public adapter<Stream> {
+class rseq_adapter: public adapter<Stream> {
 public:
+    #ifndef DEBUG_SER
     #define DEBUG_SER(args...) // printf(args)
+    #endif
     void serialize_outpoint(Stream& s, const outpoint& o) {
         DEBUG_SER("serializing %s outpoint\n", o.known ? "known" : "unknown");
         DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         Serialize(s, VARINT(o.n));
         if (o.known) {
             DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
-            g_simpletime_rseq_ctr[I]->seq_write(o.seq);
+            g_rseq_ctr[I]->seq_write(o.seq);
         } else {
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
             Serialize(s, o.txid);
@@ -44,7 +50,7 @@ public:
         Unserialize(s, VARINT(o.n));
         DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         if (o.known) {
-            o.seq = g_simpletime_rseq_ctr[I]->seq_read();
+            o.seq = g_rseq_ctr[I]->seq_read();
             DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
         } else {
             Unserialize(s, o.txid);
@@ -52,45 +58,52 @@ public:
         }
     }
     void serialize_tx(Stream& s, const tx& t) {
-        long l = g_simpletime_rseq_ctr[I]->tell();
-        // #undef DEBUG_SER
-        // #define DEBUG_SER(args...) if (l == 116166765) printf(args)
+        long l = g_rseq_ctr[I]->tell();
+        #undef DEBUG_SER
+        #define DEBUG_SER(args...) if (s.debugging) printf(args)
         DEBUG_SER("serializing tx\n");
-        DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
+        DEBUG_SER("- id: %s\n", t.id.ToString().c_str());   // 32
         Serialize(s, t.id);
         DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
-        g_simpletime_rseq_ctr[I]->seq_write(t.seq);
-        DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
+        g_rseq_ctr[I]->seq_write(t.seq);
+        DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);            // 33   40
         Serialize(s, VARINT(t.weight));
-        DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);
+        DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);                  // 34   48
         Serialize(s, VARINT(t.fee));
-        DEBUG_SER("- inputs: %" PRIu64 "\n", t.inputs);
+        if (t.fee > 100000000ULL) {
+            fprintf(stderr, "unusually high fee %" PRIu64 " for txid %s\n", t.fee, t.id.ToString().c_str());
+            fprintf(stderr, "tx = %s\n", t.to_string().c_str());
+        }
+        DEBUG_SER("- inputs: %" PRIu64 "\n", t.inputs);            // 35   50
         Serialize(s, VARINT(t.inputs));
         for (uint64_t i = 0; i < t.inputs; ++i) {
             DEBUG_SER("--- input #%" PRIu64 "/%" PRIu64 "\n", i+1, t.inputs);
             DEBUG_SER("--- state: %u\n", t.state[i]);
-            Serialize(s, t.state[i]);
+            Serialize(s, t.state[i]);                       // 1
             if (t.state[i] == outpoint::state_coinbase) {
                 DEBUG_SER("--- vin: (coinbase)\n");
             }
             if (t.state[i] != outpoint::state_confirmed && t.state[i] != outpoint::state_coinbase) {
                 // if (!ser_action.ForRead()) printf("--- vin: %s\n", vin[i].to_string().c_str());
                 DEBUG_SER("--- vin: %s\n", t.vin[i].to_string().c_str());
-                t.vin[i].serialize(s, this);
-            }
-        }
+                t.vin[i].serialize(s, this);                // 2    36
+            }                                               // 0    36
+        }                                                   // 1    37
     }
     void deserialize_tx(Stream& s, tx& t) {
-        long l = g_simpletime_rseq_ctr[I]->tell();
+        long l = g_rseq_ctr[I]->tell();
         DEBUG_SER("deserializing tx\n");
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
-        t.seq = g_simpletime_rseq_ctr[I]->seq_read();
+        t.seq = g_rseq_ctr[I]->seq_read();
         DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         Unserialize(s, VARINT(t.weight));
         DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
         Unserialize(s, VARINT(t.fee));
         DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);
+        if (t.fee > 100000000ULL) {
+            fprintf(stderr, "unusually high fee %" PRIu64 " for txid %s\n", t.fee, t.id.ToString().c_str());
+        }
         Unserialize(s, VARINT(t.inputs));
         DEBUG_SER("- inputs: %" PRIu64 "\n", t.inputs);
         t.state.resize(t.inputs);
@@ -119,7 +132,7 @@ public:
         if (b.is_known) return;
         Serialize(s, VARINT(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            g_simpletime_rseq_ctr[I]->seq_write(b.known[i]);
+            g_rseq_ctr[I]->seq_write(b.known[i]);
         }
         Serialize(s, b.unknown);
     }
@@ -130,22 +143,40 @@ public:
         Unserialize(s, VARINT(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_simpletime_rseq_ctr[I]->seq_read();
+            b.known[i] = g_rseq_ctr[I]->seq_read();
         }
         Unserialize(s, b.unknown);
     }
 };
 
+struct rseq_queue {
+    bool done = false;
+    std::string tag;
+    std::atomic<uint32_t> queue_height_goal{0};
+    std::atomic<uint32_t> queue_height_done{0};
+    std::map<uint32_t, std::vector<seq_t>> frozen_queue;  // invalidated or confirmed queue
+    std::map<uint32_t, std::vector<seq_t>> chilled_queue; // discarded (valid) queue
+    std::vector<seq_t> purge_queue;                       // to-be-purged sequences
+    std::mutex purge_mutex;                               // purge queue mutex
+    txs_t* txs;                                           // ref to txs dictionary
+};
+
+void rseq_queue_processor_f(rseq_queue* q);
+
 template<int I>
-class mff_simpletime_rseq: public mff, public simpletime_rseq_container, public chain_delegate, public listener_callback {
+class mff_rseq: public mff, public rseq_container, public chain_delegate, public listener_callback {
 private:
+    rseq_queue q;
+    std::thread* queue_processor{nullptr};
+
     constexpr static size_t MAX_BLOCKS = 6; // keep this many blocks
     int64_t lastflush;
     FILE* in_fp;
     CAutoFile in;
-    simpletime_rseq_adapter<CAutoFile, I> serializer;
+    rseq_adapter<CAutoFile, I> serializer;
     std::vector<uint256> pending_conf_unknown;
     std::vector<seq_t> pending_conf_known;
+    std::set<uint256> pending_import;
 
     void apply_block(std::shared_ptr<block> b);
     void undo_block_at_height(uint32_t height);
@@ -154,8 +185,6 @@ private:
     inline void tx_out(bool known, seq_t seq, std::shared_ptr<tx> t, const uint256& txid, uint8_t reason);
     inline void tx_invalid(bool known, seq_t seq, std::shared_ptr<tx> t, const tiny::tx& tref, uint8_t state, const uint256* cause);
 
-    std::map<uint32_t, std::vector<seq_t>> frozen_queue;  // invalidated or confirmed queue
-    std::map<uint32_t, std::vector<seq_t>> chilled_queue; // discarded (valid) queue
     inline void tx_freeze(seq_t seq);
     inline void tx_chill(seq_t seq);
     inline void tx_thaw(seq_t seq);
@@ -195,9 +224,9 @@ public:
     std::vector<uint8_t> last_invalidated_txhex; // for TX_INVALID
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
-    mff_simpletime_rseq(const std::string path = "", bool readonly = true);
-    mff_simpletime_rseq(FILE* fp, bool readonly = true);
-    ~mff_simpletime_rseq();
+    mff_rseq(const std::string path = "", bool readonly = true);
+    mff_rseq(FILE* fp, bool readonly = true);
+    ~mff_rseq();
     bool read_entry() override;
     int64_t peek_time() override;
     // void write_entry(entry* e) override;
@@ -228,4 +257,4 @@ public:
 
 } // namespace mff
 
-#endif // BITCOIN_TXMEMPOOL_FORMAT_SIMPLETIME_H
+#endif // BITCOIN_TXMEMPOOL_FORMAT_RELSEQ_H

@@ -83,7 +83,7 @@ int main(int argc, char* const* argv) {
     for (size_t i = !piping; i < ca.l.size(); ++i) {
         txids.insert(tracked{uint256S(ca.l[i]), depth});
     }
-    mff::mff_rseq<0>* reader = piping ? new mff::mff_rseq<0>(stdin) : new mff::mff_rseq<0>(infile);
+    mff::mff_fr<0>* reader = piping ? new mff::mff_fr<0>(stdin) : new mff::mff_fr<0>(infile);
     reader->read_entry();
     printf("%s: ---log starts---\n", time_string(reader->last_time).c_str());
     uint64_t entries = 0;
@@ -159,7 +159,7 @@ int main(int argc, char* const* argv) {
             nooutputiters++;
             if (nooutputiters > 10000) {
                 nooutputiters = 0;
-                printf("%s\r", time_string(reader->last_time).c_str());
+                printf("%u %s\r", reader->blk_tell(), time_string(reader->last_time).c_str());
                 fflush(stdout);
             }
         }

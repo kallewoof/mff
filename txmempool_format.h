@@ -17,18 +17,18 @@ extern uint64_t skipped_recs;
 
 namespace mff {
 
-class rseq_container {
+class fr_container {
 public:
     virtual long tell() = 0;
     virtual seq_t seq_read() = 0;
     virtual void seq_write(seq_t seq) = 0;
 };
 
-#define MAX_RSEQ_CONTAINERS 3
-extern rseq_container* g_rseq_ctr[MAX_RSEQ_CONTAINERS];
+#define MAX_FR_CONTAINERS 3
+extern fr_container* g_fr_ctr[MAX_FR_CONTAINERS];
 
 template <typename Stream, int I>
-class rseq_adapter: public adapter<Stream> {
+class fr_adapter: public adapter<Stream> {
 public:
     #define DEBUG_SER(args...) // printf(args)
     void serialize_outpoint(Stream& s, const outpoint& o) {
@@ -37,7 +37,7 @@ public:
         Serialize(s, VARINT(o.n));
         if (o.known) {
             DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
-            g_rseq_ctr[I]->seq_write(o.seq);
+            g_fr_ctr[I]->seq_write(o.seq);
         } else {
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
             Serialize(s, o.txid);
@@ -48,7 +48,7 @@ public:
         Unserialize(s, VARINT(o.n));
         DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         if (o.known) {
-            o.seq = g_rseq_ctr[I]->seq_read();
+            o.seq = g_fr_ctr[I]->seq_read();
             DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
         } else {
             Unserialize(s, o.txid);
@@ -56,14 +56,14 @@ public:
         }
     }
     void serialize_tx(Stream& s, const tx& t) {
-        long l = g_rseq_ctr[I]->tell();
+        long l = g_fr_ctr[I]->tell();
         #undef DEBUG_SER
         #define DEBUG_SER(args...) if (s.debugging) printf(args)
         DEBUG_SER("serializing tx\n");
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());   // 32
         Serialize(s, t.id);
         DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
-        g_rseq_ctr[I]->seq_write(t.seq);
+        g_fr_ctr[I]->seq_write(t.seq);
         DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);            // 33   40
         Serialize(s, VARINT(t.weight));
         DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);                  // 34   48
@@ -89,11 +89,11 @@ public:
         }                                                   // 1    37
     }
     void deserialize_tx(Stream& s, tx& t) {
-        long l = g_rseq_ctr[I]->tell();
+        long l = g_fr_ctr[I]->tell();
         DEBUG_SER("deserializing tx\n");
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
-        t.seq = g_rseq_ctr[I]->seq_read();
+        t.seq = g_fr_ctr[I]->seq_read();
         DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         Unserialize(s, VARINT(t.weight));
         DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
@@ -130,7 +130,7 @@ public:
         if (b.is_known) return;
         Serialize(s, VARINT(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            g_rseq_ctr[I]->seq_write(b.known[i]);
+            g_fr_ctr[I]->seq_write(b.known[i]);
         }
         Serialize(s, b.unknown);
     }
@@ -141,13 +141,13 @@ public:
         Unserialize(s, VARINT(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_rseq_ctr[I]->seq_read();
+            b.known[i] = g_fr_ctr[I]->seq_read();
         }
         Unserialize(s, b.unknown);
     }
 };
 
-struct queue {
+struct fr_queue {
     bool done = false;
     std::string tag;
     std::atomic<uint32_t> queue_height_goal{0};
@@ -159,19 +159,19 @@ struct queue {
     txs_t* txs;                                           // ref to txs dictionary
 };
 
-void queue_processor_f(queue* q);
+void fr_queue_processor_f(fr_queue* q);
 
 template<int I>
-class mff_rseq: public mff, public rseq_container, public chain_delegate, public listener_callback {
+class mff_fr: public mff, public fr_container, public chain_delegate, public listener_callback {
 private:
-    queue q;
+    fr_queue q;
     std::thread* queue_processor{nullptr};
 
     constexpr static size_t MAX_BLOCKS = 6; // keep this many blocks
     int64_t lastflush;
     FILE* in_fp;
     CAutoFile in;
-    rseq_adapter<CAutoFile, I> serializer;
+    fr_adapter<CAutoFile, I> serializer;
     std::vector<uint256> pending_conf_unknown;
     std::vector<seq_t> pending_conf_known;
     std::set<uint256> pending_import;
@@ -191,6 +191,7 @@ private:
 
     long use_start = 0;
 public:
+    uint8_t version;
     std::map<uint256,seekable_record> tx_recs;
     std::map<uint256,int64_t> known_txid;
     std::set<uint32_t> discarded_x_blocks_ago[2];
@@ -202,6 +203,7 @@ public:
     uint32_t expected_block_height() override {
         return active_chain.chain.size() == 0 ? 0 : active_chain.height + 1;
     }
+    uint32_t blk_tell() override { return expected_block_height(); }
 
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
@@ -222,14 +224,14 @@ public:
     std::vector<uint8_t> last_invalidated_txhex; // for TX_INVALID
     seq_t touched_txid(const uint256& txid, bool count); // returns seq for txid or 0 if not touched
 
-    mff_rseq(const std::string path = "", bool readonly = true);
-    mff_rseq(FILE* fp, bool readonly = true);
-    ~mff_rseq();
+    mff_fr(const std::string path = "", bool readonly = true);
+    mff_fr(FILE* fp, bool readonly = true);
+    ~mff_fr();
     bool read_entry() override;
     int64_t peek_time() override;
     // void write_entry(entry* e) override;
     seq_t claim_seq(const uint256& txid) override;
-    long tell() override { return ftell(in_fp); }
+    long tell() override { return in.told; }
     uint256 get_replacement_txid() const;
     uint256 get_invalidated_txid() const;
 

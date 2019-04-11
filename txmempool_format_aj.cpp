@@ -8,16 +8,12 @@
 #include <amap.h>
 
 #include <txmempool_format_aj.h>
+#include <txmempool_debugging.h>
 
 // static mff::seq_t debug_seq = 0;
 // static bool debugging = false;
 // static int64_t debug_time = 1516996219;
 #define DEBLOG(args...) //if (debugging) printf(args)
-// static uint256 debug_txid = uint256S("59aa5ee3db978ea8168a6973b505c31b3f5f4757330da4ef45da0f51a81c1fc9");
-// #define DEBUG_SEQ 63916
-#define DSL(s, fmt...) //if (s == DEBUG_SEQ) { printf("[SEQ] " fmt); }
-// #define l(args...) if (active_chain.height == 521703) { printf(args); }
-// #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
 namespace mff {
 

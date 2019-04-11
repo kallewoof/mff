@@ -349,6 +349,7 @@ public:
         af << *mempool;
     }
 
+    virtual uint32_t blk_tell() { return 0; }
     virtual long tell() = 0;
     virtual void flush() = 0;
     virtual bool read_entry() = 0;
@@ -385,7 +386,6 @@ public:
             return txs[seqs[t.id]];
         }
         std::shared_ptr<tx> t2 = std::make_shared<tx>(t);
-        t2->seq = claim_seq(t2->id);
         // printf("prevouts ");
         // convert the inputs
         size_t state_index = 0;
@@ -418,8 +418,11 @@ public:
             ++state_index;
         }
         // printf("got %llu=%s\n", seqs[t.id], t.id.ToString().c_str());
-        seqs[t2->id] = t2->seq;
-        txs[t2->seq] = t2;
+        t2->seq = claim_seq(t2->id);
+        if (t2->seq) {
+            seqs[t2->id] = t2->seq;
+            txs[t2->seq] = t2;
+        }
         return t2;
     }
 

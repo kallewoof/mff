@@ -6,16 +6,12 @@
 #include <tinytx.h>
 
 #include <txmempool_format_timetail.h>
+#include <txmempool_debugging.h>
 
 // handle mff versioning
 #define prot prot_v1
 #define TX_KNOWN_BIT TX_KNOWN_BIT_V1
 #define TIME_REL_BIT TIME_REL_BIT_V1
-
-// #define DEBUG_SEQ 14937
-#define DSL(s, fmt...) // if (s == DEBUG_SEQ) { printf("[SEQ] " fmt); }
-// #define l(args...) if (active_chain.height == 521703) { printf(args); }
-// #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
 namespace mff {
 

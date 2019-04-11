@@ -7,6 +7,7 @@
 #include <tinyblock.h>
 
 #include <txmempool_format_simpletime.h>
+#include <txmempool_debugging.h>
 
 // handle mff versioning
 #define prot prot_v1
@@ -17,25 +18,6 @@ static uint32_t frozen_max = 0;
 static uint64_t one_times = 0;
 static uint64_t zero_times = 0;
 static uint64_t other_times = 0;
-
-// #define DEBUG_TXID uint256S("7505b0a3fc9ebde0994dcac8d8d1e4c424c0adbda4a0ab4670abfb027fe2189f")
-// #define DEBUG_SEQ 1314
-// #define l(args...) if (active_chain.height == 521703) { printf(args); }
-// #define l1(args...) if (active_chain.height == 521702) { printf(args); }
-
-#ifdef DEBUG_TXID
-static const uint256 debug_txid = DEBUG_TXID;
-#define DTX(txid, fmt...) if (txid == debug_txid) { nlprintf("%s%s", tag.c_str(), tag == "" ? "" : "   "); printf("[TX] " fmt); }
-#define DCOND
-#else
-#define DTX(txid, fmt...)
-#endif
-
-#ifdef DEBUG_SEQ
-#define DSL(s, fmt...) if (s == DEBUG_SEQ) { nlprintf("%s%s", tag.c_str(), tag == "" ? "" : "   "); printf("[SEQ] " fmt); }
-#else
-#define DSL(s, fmt...)
-#endif
 
 namespace mff {
 
@@ -68,7 +50,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
     if (timerel) {\
         uint8_t r; \
         in >> r; \
-        zero_times += !r; one_times += r == 1; other_times += r > 1; if (((zero_times + one_times | other_times) % 10000) == 0) printf("times: %" PRIu64 " 0, %" PRIu64 " 1, %" PRIu64 " remaining\n", zero_times, one_times, other_times); \
+        zero_times += !r; one_times += r == 1; other_times += r > 1; /*if (((zero_times + one_times | other_times) % 10000) == 0) printf("times: %" PRIu64 " 0, %" PRIu64 " 1, %" PRIu64 " remaining\n", zero_times, one_times, other_times);*/ \
         t = last_time + r; \
     } else { \
         static_assert(sizeof(t) == 8, #t " is of wrong type! Must be int64_t!"); \
@@ -188,7 +170,7 @@ mff_simpletime_rseq<I>::mff_simpletime_rseq(FILE* fp, bool readonly) : in_fp(fp)
 template<int I>
 mff_simpletime_rseq<I>::~mff_simpletime_rseq() {
     g_simpletime_rseq_ctr[I] = nullptr;
-    printf("times: %" PRIu64 " 0, %" PRIu64 " 1, %" PRIu64 " remaining\n", zero_times, one_times, other_times);
+    // printf("times: %" PRIu64 " 0, %" PRIu64 " 1, %" PRIu64 " remaining\n", zero_times, one_times, other_times);
 }
 
 inline bool get_block(uint256 blockhex, tiny::block& b, uint32_t& height) {
@@ -449,7 +431,7 @@ bool mff_simpletime_rseq<I>::read_entry() {
                 // go back
                 fseek(in_fp, pos, SEEK_SET);
             }
-            DSL(t->seq, "TX_REC\n");
+            DSL(t->seq, "TX_REC %s\n", t->id.ToString().c_str());
             if (txs.count(t->seq)) {
                 printf("force-thawing %" PRIu64 " as it is being replaced!\n", t->seq);
                 tx_thaw(t->seq); // this removes the tx from chill/freeze lists
@@ -981,8 +963,9 @@ inline void mff_simpletime_rseq<I>::tx_rec(seqdict_server* source, const tx& x) 
         return;
     }
     mplinfo_(": seq=%" PRIu64 "\n", t->seq);
-    DTX(x.id, "TX_REC with seq=%" PRIu64 "\n", t->seq);
-    bool known = seekable && tx_recs.count(x.id);
+    DTX(t->id, "TX_REC with seq=%" PRIu64 "\n", t->seq);
+    bool known = seekable && seqs.count(t->id);
+    assert(!known);
     uint8_t b = prot(CMD::TX_REC, known);
     start(b);
     long pos = ftell(in_fp);
@@ -1164,8 +1147,8 @@ inline void mff_simpletime_rseq<I>::tx_thaw(seq_t seq) {
 template<int I>
 inline void mff_simpletime_rseq<I>::update_queues_for_height(uint32_t height) {
     // put seqs into pool
-    uint32_t frozen_purge_height = height - 100;
-    uint32_t chilled_purge_height = height - 200;
+    uint32_t frozen_purge_height = height - 20000;
+    uint32_t chilled_purge_height = height - 30000;
 
     if (frozen_queue.count(frozen_purge_height)) {
         if (frozen_queue[frozen_purge_height].size() > 0) {
