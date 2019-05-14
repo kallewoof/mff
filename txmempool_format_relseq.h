@@ -20,7 +20,7 @@ namespace mff {
 class rseq_container {
 public:
     virtual long tell() = 0;
-    virtual seq_t seq_read() = 0;
+    virtual seq_t seq_read(bool known) = 0;
     virtual void seq_write(seq_t seq) = 0;
 };
 
@@ -50,7 +50,7 @@ public:
         Unserialize(s, VARINT(o.n));
         DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         if (o.known) {
-            o.seq = g_rseq_ctr[I]->seq_read();
+            o.seq = g_rseq_ctr[I]->seq_read(true);
             DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
         } else {
             Unserialize(s, o.txid);
@@ -95,7 +95,7 @@ public:
         DEBUG_SER("deserializing tx\n");
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
-        t.seq = g_rseq_ctr[I]->seq_read();
+        t.seq = g_rseq_ctr[I]->seq_read(false);
         DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         Unserialize(s, VARINT(t.weight));
         DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
@@ -143,7 +143,7 @@ public:
         Unserialize(s, VARINT(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_rseq_ctr[I]->seq_read();
+            b.known[i] = g_rseq_ctr[I]->seq_read(true);
         }
         Unserialize(s, b.unknown);
     }
@@ -231,11 +231,12 @@ public:
     int64_t peek_time() override;
     // void write_entry(entry* e) override;
     seq_t claim_seq(const uint256& txid) override;
+    void verify_seq(const uint256& txid, seq_t seq) override;
     long tell() override { return ftell(in_fp); }
     uint256 get_replacement_txid() const;
     uint256 get_invalidated_txid() const;
 
-    seq_t seq_read() override;
+    seq_t seq_read(bool known) override;
     void seq_write(seq_t seq) override;
 
     void flush() override { fflush(in_fp); }

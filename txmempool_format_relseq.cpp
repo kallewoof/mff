@@ -105,7 +105,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 #define read_txseq_keep(known, seq, h) \
     if (known) { \
-        seq = seq_read(); \
+        seq = seq_read(true); \
     } else { \
         in >> h; \
         seq = seqs.count(h) ? seqs[h] : 0; \
@@ -113,7 +113,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 #define read_txseq(known, seq) \
     if (known) { \
-        seq = seq_read(); \
+        seq = seq_read(true); \
     } else { \
         uint256 h; \
         in >> h; \
@@ -131,7 +131,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 inline FILE* setup_file(const char* path, bool readonly) {
     FILE* fp = fopen(path, readonly ? "rb" : "rb+");
     if (!readonly && fp == nullptr) {
-        fp = fopen(path, "wb");
+        fp = fopen(path, "wb+");
     }
     if (fp == nullptr) {
         fprintf(stderr, "unable to open %s\n", path);
@@ -406,7 +406,7 @@ bool mff_rseq<I>::read_entry() {
                 if (known) {
                     mplinfo_("known "); fflush(stdout);
                     pos = in.told; verify_told(); // for offset calculation
-                    seq = seq_read();
+                    seq = seq_read(true);
                     uint64_t offset;
                     in >> VARINT(offset);
                     // printf("seek point = pos - offset = %ld - %" PRIu64 " = %" PRIu64 "\n", pos, offset, pos - offset);
@@ -497,7 +497,7 @@ bool mff_rseq<I>::read_entry() {
 
             case TX_IN: {
                 mplinfo("TX_IN(): "); fflush(stdout);
-                uint64_t seq = seq_read();
+                uint64_t seq = seq_read(true);
                 DSL(seq, "TX_IN\n");
                 if (!txs.count(seq)) {
                     fprintf(stderr, "*** missing seq=%" PRIu64 " in txs\n", seq);
@@ -632,7 +632,7 @@ bool mff_rseq<I>::read_entry() {
                     uint64_t count = ReadCompactSize(in);
                     mplinfo("%" PRIu64 " transactions\n", count);
                     for (uint64_t i = 0; i < count; ++i) {
-                        uint64_t seq = seq_read();
+                        uint64_t seq = seq_read(true);
                         mplinfo("%" PRIu64 ": seq = %" PRIu64 "\n", i, seq);
                         if (seq) {
                             assert(txs.count(seq));
@@ -666,18 +666,37 @@ bool mff_rseq<I>::read_entry() {
 }
 
 template<int I>
+void mff_rseq<I>::verify_seq(const uint256& txid, seq_t seq) {
+    long t = in.told;
+    assert(seekable);
+    assert(tx_recs.count(txid));
+    const auto& r = tx_recs[txid];
+    assert(seq == r.seq);
+    in.seek(r.pos, SEEK_SET);
+    tx x;
+    serializer.deserialize_tx(in, x);
+    assert(x.id == txid);
+    in.seek(t, SEEK_SET);
+}
+
+template<int I>
 inline seq_t mff_rseq<I>::claim_seq(const uint256& txid) {
     if (seqs.count(txid)) return seqs[txid];
     return nextseq++;
 }
 
 template<int I>
-inline seq_t mff_rseq<I>::seq_read() {
+inline seq_t mff_rseq<I>::seq_read(bool known) {
     int64_t rseq;
     in >> CVarInt<VarIntMode::SIGNED, int64_t>{rseq};
     last_seq += rseq;
     assert(in.told == ftell(in_fp));
     DSL(last_seq, "..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, rseq >= 0 ? "+" : "", rseq);
+    // printf("\n..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, rseq >= 0 ? "+" : "", rseq);
+    if (known) {
+        assert(txs.count(last_seq));
+        VERIFY_SEQ(txs[last_seq]->id, last_seq);
+    }
     return last_seq;
 }
 
@@ -689,6 +708,7 @@ inline void mff_rseq<I>::seq_write(seq_t seq) {
     last_seq = seq;
     assert(in.told == ftell(in_fp));
     DSL(last_seq, "..%ld [write %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, rseq >= 0 ? "+" : "", rseq);
+    // printf("\n..%ld [write %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, rseq >= 0 ? "+" : "", rseq);
     DEBUG_SERIALIZE("/seq_write()\n");
 }
 
@@ -1349,7 +1369,7 @@ template bool mff_rseq<I>::read_entry(); \
 template seq_t mff_rseq<I>::claim_seq(const uint256& txid); \
 template uint256 mff_rseq<I>::get_replacement_txid() const; \
 template uint256 mff_rseq<I>::get_invalidated_txid() const; \
-template seq_t mff_rseq<I>::seq_read(); \
+template seq_t mff_rseq<I>::seq_read(bool known); \
 template void mff_rseq<I>::seq_write(seq_t seq); \
 /* template bool mff_rseq<I>::test_entry(entry* e); */ \
 template const std::shared_ptr<tx> mff_rseq<I>::register_entry(const tiny::mempool_entry& entry, bool known); \

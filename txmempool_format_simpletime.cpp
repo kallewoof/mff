@@ -131,7 +131,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 inline FILE* setup_file(const char* path, bool readonly) {
     FILE* fp = fopen(path, readonly ? "rb" : "rb+");
     if (!readonly && fp == nullptr) {
-        fp = fopen(path, "wb");
+        fp = fopen(path, "wb+");
     }
     if (fp == nullptr) {
         fprintf(stderr, "unable to open %s\n", path);

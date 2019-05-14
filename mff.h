@@ -318,6 +318,7 @@ public:
     txs_t txs;
     listener_callback* listener = nullptr;
     virtual seq_t claim_seq(const uint256& txid) = 0;
+    virtual void verify_seq(const uint256& txid, seq_t seq) {}
 };
 
 class mff: public seqdict_server, public tiny::mempool_callback {

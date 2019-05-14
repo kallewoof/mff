@@ -27,7 +27,7 @@ namespace mff {
 inline FILE* setup_file(const char* path, bool readonly) {
     FILE* fp = fopen(path, readonly ? "rb" : "rb+");
     if (!readonly && fp == nullptr) {
-        fp = fopen(path, "wb");
+        fp = fopen(path, "wb+");
     }
     if (fp == nullptr) {
         fprintf(stderr, "unable to open %s\n", path);
@@ -204,6 +204,7 @@ std::shared_ptr<tx> mff_ajb::register_tx(tiny::tx& tt) {
     auto t = std::make_shared<tx>();
     t->id = tt.hash;
     t->seq = nextseq++;
+    DTX(t->id, "register_entry\n");
     DSL(t->seq, "register_entry\n");
     // printf("tx-reg: %s <=> %" PRIu64 "\n", t->id.ToString().c_str(), t->seq);
 

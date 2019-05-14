@@ -17,15 +17,16 @@ static uint32_t frozen_max = 0;
 #define verify_told()
 #endif
 
-#define DEBUG_SERIALIZE(args...) // do { long z = ftell(in_fp); if (z > 512641000 && z < 512641200) { showinfo = in.debugging = true; printf("[%ld] ", z); printf(args); } else showinfo = in.debugging = false; } while (0)
+static uint32_t upcoming_block = 0;
+#define DEBUG_SERIALIZE(args...) // do { long z = ftell(in_fp); if (/*z > 274000 && z < 275460*/upcoming_block == 532422) { in.debugging = true; printf("[%ld] ", z); printf(args); } else in.debugging = showinfo = false; } while (0)
 
 // #define l(args...) if (active_chain.height == 521703) { printf(args); }
 // #define l1(args...) if (active_chain.height == 521702) { printf(args); }
 
-// #define showinfo false
-bool showinfo = false;
-#define mplinfo_(args...) if (showinfo) printf(args)
-#define mplinfo(args...)  if (showinfo) printf("[MPL::info] " args)
+#define showinfo false
+// bool showinfo = false;
+#define mplinfo_(args...) //if (showinfo) printf(args)
+#define mplinfo(args...)  //if (showinfo) printf("[MPL::info] " args)
 #define mplwarn(args...) printf("[MPL::warn] " args)
 #define mplerr(args...)  fprintf(stderr, "[MPL::err]  " args)
 
@@ -110,7 +111,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 #define read_txseq_keep(known, seq, h) \
     if (known) { \
-        seq = seq_read(); \
+        seq = seq_read(true); \
     } else { \
         in >> h; \
         seq = seqs.count(h) ? seqs[h] : 0; \
@@ -118,7 +119,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 
 #define read_txseq(known, seq) \
     if (known) { \
-        seq = seq_read(); \
+        seq = seq_read(true); \
     } else { \
         uint256 h; \
         in >> h; \
@@ -128,7 +129,7 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 #define write_txref(seq, id) \
     DEBUG_SERIALIZE("write_txref()\n"); \
     if (seq) { \
-        seq_write(seq); \
+        seq_write(seq, true); \
     } else { \
         in << id; \
     }
@@ -136,13 +137,19 @@ inline bool find_erase(std::vector<T>& v, const T& e) {
 inline FILE* setup_file(const char* path, bool readonly) {
     FILE* fp = fopen(path, readonly ? "rb" : "rb+");
     if (!readonly && fp == nullptr) {
-        fp = fopen(path, "wb");
+        fp = fopen(path, "wb+");
     }
     if (fp == nullptr) {
         fprintf(stderr, "unable to open %s\n", path);
         assert(fp);
     }
     return fp;
+}
+
+template<int I>
+void mff_fr<I>::prep_block(uint32_t height) {
+    // fprintf(stderr, "\n: block %u :\n", height);
+    upcoming_block = height;
 }
 
 template<int I>
@@ -155,8 +162,6 @@ mff_fr<I>::mff_fr(FILE* fp, bool readonly) : in_fp(fp), in(in_fp, SER_DISK, 0) {
     assert(get_fr_ctr(I) == nullptr);
     g_fr_ctr[I] = this;
     entry_counter = 0;
-    last_seq = 0;
-    nextseq = 1;
     lastflush = GetTime();
     // in.debugme(true);
     char magic[3];
@@ -209,6 +214,8 @@ void mff_fr<I>::apply_block(std::shared_ptr<block> b) {
         return;
     }
     // printf("apply block %u=%s\n", b->height, b->hash.ToString().c_str());
+    // bool d = b->height == 532422;
+    #define D(args...) //if (d) printf(args)
     tiny::block bx;
     uint32_t hx;
     if (get_block(b->hash, bx, hx)) {
@@ -219,6 +226,7 @@ void mff_fr<I>::apply_block(std::shared_ptr<block> b) {
             in_block_txid.insert(x.hash);
         }
         for (auto& x : b->known) {
+            D("- known : %" PRIseq "\n", x);
             assert(txs.count(x));
             DSL(x, "supposedly in block %u (known)\n", hx);
             DTX(txs[x]->id, "supposedly in block %u (known)\n", hx);
@@ -240,9 +248,9 @@ void mff_fr<I>::apply_block(std::shared_ptr<block> b) {
             for (auto& x : in_block_txid) printf("- %s\n", x.ToString().c_str());
             assert(!"block missing transactions");
         }
-        // printf("block %u ok\n", b->height);
-    } // else printf("block %u not checked (block data missing)\n", b->height);
-    // printf("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
+        D("block %u ok\n", b->height);
+    } else D("block %u not checked (block data missing)\n", b->height);
+    D("appending block %u over block %u = %u\n", b->height, active_chain.height, active_chain.chain.size() == 0 ? 0 : active_chain.chain.back()->height);
     // l1("apply block %u (%s)\n", b->height, b->hash.ToString().c_str());
     if (active_chain.chain.size() > 0 && b->height < active_chain.height + 1) {
         mplwarn("dealing with BLOCK_UNCONF missing bug 20180502153142\n");
@@ -280,6 +288,7 @@ void mff_fr<I>::apply_block(std::shared_ptr<block> b) {
     }
 #endif
     update_queues();
+    // if (d) assert(0);
 }
 
 template<int I>
@@ -416,7 +425,7 @@ bool mff_fr<I>::read_entry() {
                 if (known) {
                     mplinfo_("known "); fflush(stdout);
                     pos = in.told; verify_told(); // for offset calculation
-                    seq = seq_read();
+                    seq = seq_read(true);
                     fprintf(stderr, "**** known TX_REC?! %" PRIseq " ****\n", seq);
                     uint64_t offset;
                     in >> VARINT(offset);
@@ -463,7 +472,7 @@ bool mff_fr<I>::read_entry() {
                 }
                 // fix seq
                 if (known) {
-                    t->seq = last_seq = seq;
+                    t->seq = seq;
                 }
                 if (seekable && tx_recs.count(t->id) == 0) {
                     tx_recs[t->id] = {rec_pos, t->seq};
@@ -511,7 +520,6 @@ bool mff_fr<I>::read_entry() {
                     } else known_txid[t->id] = active_chain.height;
                 }
 
-                nextseq = std::max(nextseq, t->seq + 1);
                 last_seqs.push_back(t->seq);
                 for (const auto& prevout : t->vin) {
                     if (prevout.is_known()) {
@@ -526,7 +534,7 @@ bool mff_fr<I>::read_entry() {
 
             case TX_IN: {
                 mplinfo("TX_IN(): "); fflush(stdout);
-                uint64_t seq = seq_read();
+                uint64_t seq = seq_read(true);
                 DSL(seq, "TX_IN\n");
                 if (!txs.count(seq)) {
                     fprintf(stderr, "*** missing seq=%" PRIu64 " in txs\n", seq);
@@ -545,6 +553,8 @@ bool mff_fr<I>::read_entry() {
 
             case BLOCK_CONF: {
                 // l1("BLOCK_CONF(%s): ", known ? "known" : "unknown");
+                // in.debugging = showinfo = active_chain.height == 0;
+                // printf("\nin.told = %ld\n", in.told);
                 if (known) {
                     // we know the block; just get the header info and find it, then apply
                     block b(known);
@@ -661,7 +671,7 @@ bool mff_fr<I>::read_entry() {
                     uint64_t count = ReadCompactSize(in);
                     mplinfo("%" PRIu64 " transactions\n", count);
                     for (uint64_t i = 0; i < count; ++i) {
-                        uint64_t seq = seq_read();
+                        uint64_t seq = seq_read(true);
                         mplinfo("%" PRIu64 ": seq = %" PRIu64 "\n", i, seq);
                         if (seq) {
                             assert(txs.count(seq));
@@ -695,35 +705,61 @@ bool mff_fr<I>::read_entry() {
 }
 
 template<int I>
+void mff_fr<I>::verify_seq(const uint256& txid, seq_t seq) {
+    verifying_seq = true;
+    long t = in.told;
+    // if (seq == 10339) printf("verifying: t=%ld", t);
+    // fflush(in_fp);
+    in.seek(seq, SEEK_SET);
+    // if (seq == 10339) printf(", seeking to %" PRIseq, seq);
+    tx x;
+    serializer.deserialize_tx(in, x);
+    // if (seq == 10339) printf(", deserialized %s", x.id.ToString().c_str());
+    assert(x.id == txid);
+    in.seek(t, SEEK_SET);
+    // if (seq == 10339) printf(", returned to %ld\n", ftell(in_fp));
+    verifying_seq = false;
+}
+
+template<int I>
 inline seq_t mff_fr<I>::claim_seq(const uint256& txid) {
     if (seqs.count(txid)) return seqs[txid];
     return 0;
 }
 
 template<int I>
-inline seq_t mff_fr<I>::seq_read() {
+inline seq_t mff_fr<I>::seq_read(bool known) {
     int64_t fr;
     long t = in.told;
     in >> CVarInt<VarIntMode::SIGNED, int64_t>{fr};
-    last_seq = t + fr;
-    // last_seq += fr;
-    assert(in.told == ftell(in_fp));
-    DSL(last_seq, "..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, fr >= 0 ? "+" : "", fr);
-    // printf("\n..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, fr >= 0 ? "+" : "", fr);
-    return last_seq;
+    seq_t seq = t + fr;
+    DEBUG_SERIALIZE("[%ld..%ld] seq_read(%" PRIseq " as %ld + %" PRIi64 ")\n", t, in.told-1, seq, t, fr);
+    // seq += fr;
+    // assert(in.told == ftell(in_fp));
+    DSL(seq, "..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, seq, fr >= 0 ? "+" : "", fr);
+    // printf("\n..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, seq, fr >= 0 ? "+" : "", fr);
+    if (known && !verifying_seq) {
+        assert(txs.count(seq));
+        VERIFY_SEQ(txs[seq]->id, seq);
+    }
+    return seq;
 }
 
 template<int I>
-inline void mff_fr<I>::seq_write(seq_t seq) {
-    DEBUG_SERIALIZE("seq_write(%" PRIi64 ")\n", seq);
+inline void mff_fr<I>::seq_write(seq_t seq, bool known) {
     assert(in.told != seq); // all writes should be references to existing txs, not selves
     int64_t fr = (seq > in.told ? seq - in.told : -int64_t(in.told - seq));
+    long t = in.told;
     in << CVarInt<VarIntMode::SIGNED, int64_t>(fr);
-    last_seq = seq;
-    assert(in.told == ftell(in_fp));
-    DSL(last_seq, "..%ld [write %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, fr >= 0 ? "+" : "", fr);
-    // printf("\n..%ld [write %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, fr >= 0 ? "+" : "", fr);
+    DEBUG_SERIALIZE("[%ld..%ld] seq_write(%" PRIseq " as %ld + %" PRIi64 ")\n", t, in.told - 1, seq, t, fr);
+    // assert(in.told == ftell(in_fp));
+    DSL(seq, "..%ld [write %" PRIseq " as %s%" PRIi64 "]\n", in.told, seq, fr >= 0 ? "+" : "", fr);
+    // printf("\n..%ld [write %" PRIseq " as %s%" PRIi64 "]\n", in.told, seq, fr >= 0 ? "+" : "", fr);
     DEBUG_SERIALIZE("/seq_write()\n");
+    if (known && !verifying_seq) {
+        assert(txs.count(seq));
+        VERIFY_SEQ(txs[seq]->id, seq);
+    }
 }
 
 template<int I>
@@ -741,7 +777,7 @@ const std::shared_ptr<tx> mff_fr<I>::register_entry(const tiny::mempool_entry& e
     const tiny::tx& tref = *entry.x;
     auto t = std::make_shared<tx>();
     t->id = tref.hash;
-    t->seq = known ? tx_recs[tref.hash].seq : nextseq++;
+    t->seq = known ? tx_recs[tref.hash].seq : 0;
     t->weight = tref.GetWeight();
     t->fee = entry.fee();
     t->inputs = tref.vin.size();
@@ -758,8 +794,8 @@ const std::shared_ptr<tx> mff_fr<I>::register_entry(const tiny::mempool_entry& e
         // printf("- vin %" PRIu64 " = %s n=%d, seq=%" PRIu64 ", hash=%s :: %s\n", i, known ? "known" : "unknown", prevout.n, seq, prevout.hash.ToString().c_str(), t->vin[i].to_string().c_str());
     }
 
-    txs[t->seq] = t;
-    seqs[t->id] = t->seq;
+    // txs[t->seq] = t;
+    // seqs[t->id] = t->seq;
 
     if (!known) {
         if (known_txid.count(t->id)) {
@@ -799,37 +835,36 @@ void mff_fr<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
         DTX(tref->hash, "add_entry() known\n");
         b = prot_v2(CMD::TX_IN, true);
         start(b);
-        seq_write(seqs[tref->hash]);
+        seq_write(seqs[tref->hash], true);
     } else {
         // we don't: TX_REC
-        bool known = seekable && tx_recs.count(tref->hash);
-        DTX(tref->hash, "add_entry() %s\n", known ? "offset-known" : "unknown");
-        auto t = register_entry(*entry, known);
+        auto t = register_entry(*entry, false);
         DSL(t->seq, "add_entry() unknown\n");
-        // bool debugme = known || ftell(in_fp) == 62344248;
         #define oij(args...) if (in.debugging) printf(args)
-        oij("serializing %s tx %s (%" PRIu64 ") at pos %ld\n", known ? "offset-known" : "unknown", tref->hash.ToString().c_str(), t->seq, in.told /*ftell(in_fp)*/);
+        oij("serializing tx %s (%" PRIu64 ") at pos %ld\n", tref->hash.ToString().c_str(), t->seq, in.told /*ftell(in_fp)*/);
         verify_told();
-        b = prot_v2(CMD::TX_REC, known);
+        b = prot_v2(CMD::TX_REC, false);
         start(b);
         long pos = in.told;
         verify_told();
+        t->seq = (seq_t)pos;
+        txs[t->seq] = t;
+        seqs[t->id] = t->seq;
         oij("pos = %ld\n", pos);
-        if (known) {
-            seq_write(t->seq);
-            uint64_t offset = pos - tx_recs[tref->hash].pos;
-            oij("known. offset = %ld - %ld = %" PRIu64 "\n", pos, tx_recs[tref->hash].pos, offset);
-            in << VARINT(offset);
-        } else {
+        // if (known) {
+        //     seq_write(t->seq, true);
+        //     uint64_t offset = pos - tx_recs[tref->hash].pos;
+        //     oij("known. offset = %ld - %ld = %" PRIu64 "\n", pos, tx_recs[tref->hash].pos, offset);
+        //     in << VARINT(offset);
+        // } else {
             oij("unknown. serializing tx\n");
-
             serializer.serialize_tx(in, *t);
             if (seekable) {
                 oij("tx_recs[%s] = {%ld, %" PRIu64 "}\n", tref->hash.ToString().c_str(), pos, t->seq);
                 tx_recs[tref->hash] = {pos, t->seq};
                 // printf("%s @ %ld\n", tref->hash.ToString().c_str(), pos);
             }
-        }
+        // }
     }
 }
 
@@ -886,8 +921,8 @@ void mff_fr<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, 
     const auto& tref = *entry->x;
     bool known = seqs.count(tref.hash);
     seq_t seq = known ? seqs[tref.hash] : 0;
-    DSL(seq, "remove_entry()\n");
-    DTX(tref.hash, "remove_entry()\n");
+    DSL(seq, "remove_entry() [txid=%s]\n", tref.hash.ToString().c_str());
+    DTX(tref.hash, "remove_entry() [seq=%" PRIseq "]\n", seq);
     auto t = known ? txs[seq] : nullptr;
     switch (reason) {
     case tiny::MemPoolRemovalReason::EXPIRY:    //! Expired from mempool
@@ -904,6 +939,9 @@ void mff_fr<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, 
         if (known) {
             DSL(seq, "confirmed in block (known)\n");
             DTX(tref.hash, "confirmed in block (known)\n");
+            if (std::find(pending_conf_known.begin(), pending_conf_known.end(), seq) != pending_conf_known.end()) {
+                fprintf(stderr, "remove_entry: duplicate entry in MEMPOOL remove for seq=%" PRIseq ", txid=%s\n", seq, tref.hash.ToString().c_str());
+            }
             pending_conf_known.push_back(seq);
             t->location = tx::location_confirmed;
             tx_freeze(seq);
@@ -932,7 +970,8 @@ void mff_fr<I>::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, 
 
 template<int I>
 void mff_fr<I>::push_block(int height, uint256 hash, const std::vector<tiny::tx>& vtx) {
-    showinfo = height == 533547;
+    // in.debugging = showinfo = height == 532422;
+    // printf("\nin.told = %ld\n", in.told);
     DEBUG_SERIALIZE("push_block(%d)\n", height);
     mplinfo("confirm block #%d (%s)\n", height, hash.ToString().c_str());
     if (height == active_chain.height && active_chain.chain.size() > 0) {
@@ -1065,7 +1104,7 @@ inline void mff_fr<I>::tx_rec(seqdict_server* source, const tx& x) {
     //     assert(pos > tx_recs[x.id].pos);
     //     uint64_t offset = pos - tx_recs[x.id].pos;
     //     DEBUG_SERIALIZE("known, writing sequence %" PRIi64 " and offset %" PRIu64 "\n", t->seq, offset);
-    //     seq_write(t->seq);
+    //     seq_write(t->seq, true);
     //     in << VARINT(offset);
     //     // printf("%ld: known tx %s=%" PRIu64 " at pos %ld - %ld = %" PRIu64 "\n", pos, t->id.ToString().c_str(), t->seq, pos, tx_recs[x.id].pos, offset);
     // } else {
@@ -1103,7 +1142,7 @@ inline void mff_fr<I>::tx_in(seqdict_server* source, const tx& x) {
         tx_thaw(seqs[x.id]);
         uint8_t b = prot_v2(CMD::TX_IN, true);
         start(b);
-        seq_write(seqs[x.id]);
+        seq_write(seqs[x.id], true);
     }
 }
 
@@ -1168,7 +1207,7 @@ inline void mff_fr<I>::tx_invalid(seqdict_server* source, const tx& x, std::vect
 template<int I>
 inline void mff_fr<I>::block_confirm(seqdict_server* source, const block& b) {
     DEBUG_SERIALIZE("block_confirm()\n");
-    // showinfo = b.height == 506205;
+    // in.debugging = showinfo = b.height == 532422;
     long y = showinfo ? in.told : 0;
     verify_told();
     mplinfo("%ld: block_confirm(height=%u, hash=%s)\n", y, b.height, b.hash.ToString().c_str());
@@ -1180,6 +1219,9 @@ inline void mff_fr<I>::block_confirm(seqdict_server* source, const block& b) {
             auto t = txs[seqs[txid]];
             t->location = tx::location_confirmed;
             tx_freeze(t->seq);
+            if (std::find(pending_conf_known.begin(), pending_conf_known.end(), t->seq) != pending_conf_known.end()) {
+                fprintf(stderr, "block_confirm: duplicate entry in MEMPOOL remove for seq=%" PRIseq ", txid=%s\n", t->seq, t->id.ToString().c_str());
+            }
             pending_conf_known.push_back(seqs[txid]);
         } else {
             pending_conf_unknown.push_back(txid);
@@ -1191,6 +1233,9 @@ inline void mff_fr<I>::block_confirm(seqdict_server* source, const block& b) {
             auto t = txs[seqs[txid]];
             t->location = tx::location_confirmed;
             tx_freeze(t->seq);
+            if (std::find(pending_conf_known.begin(), pending_conf_known.end(), seqs[txid]) != pending_conf_known.end()) {
+                fprintf(stderr, "block_comfirn (unk but seqs contains!?): duplicate entry in MEMPOOL remove for seq=%" PRIseq ", txid=%s\n", seqs[txid], txid.ToString().c_str());
+            }
             pending_conf_known.push_back(seqs[txid]);
         } else {
             pending_conf_unknown.push_back(txid);
@@ -1391,8 +1436,8 @@ template bool mff_fr<I>::read_entry(); \
 template seq_t mff_fr<I>::claim_seq(const uint256& txid); \
 template uint256 mff_fr<I>::get_replacement_txid() const; \
 template uint256 mff_fr<I>::get_invalidated_txid() const; \
-template seq_t mff_fr<I>::seq_read(); \
-template void mff_fr<I>::seq_write(seq_t seq); \
+template seq_t mff_fr<I>::seq_read(bool known); \
+template void mff_fr<I>::seq_write(seq_t seq, bool known); \
 /* template bool mff_fr<I>::test_entry(entry* e); */ \
 template const std::shared_ptr<tx> mff_fr<I>::register_entry(const tiny::mempool_entry& entry, bool known); \
 template void mff_fr<I>::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry); \

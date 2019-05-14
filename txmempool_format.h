@@ -20,8 +20,9 @@ namespace mff {
 class fr_container {
 public:
     virtual long tell() = 0;
-    virtual seq_t seq_read() = 0;
-    virtual void seq_write(seq_t seq) = 0;
+    virtual seq_t seq_read(bool known) = 0;
+    virtual void seq_write(seq_t seq, bool known) = 0;
+    virtual void prep_block(uint32_t height) = 0;
 };
 
 #define MAX_FR_CONTAINERS 3
@@ -37,7 +38,7 @@ public:
         Serialize(s, VARINT(o.n));
         if (o.known) {
             DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
-            g_fr_ctr[I]->seq_write(o.seq);
+            g_fr_ctr[I]->seq_write(o.seq, true);
         } else {
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());
             Serialize(s, o.txid);
@@ -48,7 +49,7 @@ public:
         Unserialize(s, VARINT(o.n));
         DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         if (o.known) {
-            o.seq = g_fr_ctr[I]->seq_read();
+            o.seq = g_fr_ctr[I]->seq_read(true);
             DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
         } else {
             Unserialize(s, o.txid);
@@ -56,14 +57,17 @@ public:
         }
     }
     void serialize_tx(Stream& s, const tx& t) {
+        // fprintf(stderr, "serialize %" PRIseq " = %s\n", t.seq, t.id.ToString().c_str());
         long l = g_fr_ctr[I]->tell();
+        if (l != (long)t.seq) fprintf(stderr, "\n*** %ld != %" PRIseq "!\n", l, t.seq);
+        assert(l == (long)t.seq);
         #undef DEBUG_SER
         #define DEBUG_SER(args...) if (s.debugging) printf(args)
         DEBUG_SER("serializing tx\n");
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());   // 32
         Serialize(s, t.id);
         DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
-        g_fr_ctr[I]->seq_write(t.seq);
+        g_fr_ctr[I]->seq_write(t.seq, false);
         DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);            // 33   40
         Serialize(s, VARINT(t.weight));
         DEBUG_SER("- fee: %" PRIu64 "\n", t.fee);                  // 34   48
@@ -87,13 +91,14 @@ public:
                 t.vin[i].serialize(s, this);                // 2    36
             }                                               // 0    36
         }                                                   // 1    37
+        // fprintf(stderr, "serialized %" PRIseq " = %s\n", t.seq, t.id.ToString().c_str());
     }
     void deserialize_tx(Stream& s, tx& t) {
         long l = g_fr_ctr[I]->tell();
         DEBUG_SER("deserializing tx\n");
         Unserialize(s, t.id);
         DEBUG_SER("- id: %s\n", t.id.ToString().c_str());
-        t.seq = g_fr_ctr[I]->seq_read();
+        t.seq = g_fr_ctr[I]->seq_read(false);
         DEBUG_SER("- seq: %" PRIu64 "\n", t.seq);
         Unserialize(s, VARINT(t.weight));
         DEBUG_SER("- weight: %" PRIu64 "\n", t.weight);
@@ -126,22 +131,26 @@ public:
     }
     void serialize_block(Stream& s, const block& b) {
         Serialize(s, b.height);
+        g_fr_ctr[I]->prep_block(b.height);
         Serialize(s, b.hash);
         if (b.is_known) return;
         Serialize(s, VARINT(b.count_known));
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            g_fr_ctr[I]->seq_write(b.known[i]);
+            g_fr_ctr[I]->seq_write(b.known[i], true);
+            // printf("- [%ld] wrote block known %" PRIseq "\n", g_fr_ctr[I]->tell(), b.known[i]);
         }
         Serialize(s, b.unknown);
     }
     void deserialize_block(Stream& s, block& b) {
         Unserialize(s, b.height);
+        g_fr_ctr[I]->prep_block(b.height);
         Unserialize(s, b.hash);
         if (b.is_known) return;
         Unserialize(s, VARINT(b.count_known));
         b.known.resize(b.count_known);
         for (uint64_t i = 0; i < b.count_known; ++i) {
-            b.known[i] = g_fr_ctr[I]->seq_read();
+            b.known[i] = g_fr_ctr[I]->seq_read(true);
+            // printf("- [%ld] read block known %" PRIseq "\n", g_fr_ctr[I]->tell(), b.known[i]);
         }
         Unserialize(s, b.unknown);
     }
@@ -208,8 +217,6 @@ public:
     std::map<uint256,uint32_t> txid_hits;
     blockdict_t blocks;
     chain active_chain;
-    uint64_t last_seq;
-    uint64_t nextseq;
 
     CMD last_cmd;
     std::vector<seq_t> last_seqs;
@@ -231,12 +238,15 @@ public:
     int64_t peek_time() override;
     // void write_entry(entry* e) override;
     seq_t claim_seq(const uint256& txid) override;
+    void verify_seq(const uint256& txid, seq_t seq) override;
+    bool verifying_seq = false;
+    void prep_block(uint32_t height) override;
     long tell() override { return in.told; }
     uint256 get_replacement_txid() const;
     uint256 get_invalidated_txid() const;
 
-    seq_t seq_read() override;
-    void seq_write(seq_t seq) override;
+    seq_t seq_read(bool known) override;
+    void seq_write(seq_t seq, bool known) override;
 
     void flush() override { fflush(in_fp); }
 
