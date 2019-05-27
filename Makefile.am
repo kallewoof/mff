@@ -17,10 +17,7 @@ EXTRA_LIBRARIES += \
   $(LIBMFF) \
   $(LIBCQ)
 
-# lib_LTLIBRARIES = $(LIBBITCOIN)
-
 bin_PROGRAMS = mff-reader mff-conv aj2bin example test-mff
-noinst_PROGRAMS =
 
 .PHONY: FORCE check-symbols check-security
 # bitcoin core #
@@ -61,17 +58,13 @@ libmff_a_SOURCES = \
 libmff_a_CPPFLAGS = $(AM_CPPFLAGS)
 libmff_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
-# CQ library #
+# CQ library (which uses libcqdb) #
 
 libcq_a_SOURCES = \
 	cq/bitcoin.cpp \
-	cq/bitcoin.h \
-	cq/cq.cpp \
-	cq/cq.h \
-	cq/io.cpp \
-	cq/io.h
+	cq/bitcoin.h
 libcq_a_CPPFLAGS = $(AM_CPPFLAGS)
-libcq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+libcq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 
 # mff-reader binary #
 mff_reader_SOURCES = \
@@ -128,8 +121,8 @@ aj2bin_LDADD = \
 example_SOURCES = \
 	cq/example.cpp
 example_CPPFLAGS = $(AM_CPPFLAGS)
-example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
+example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
+example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
 example_LDADD = \
 	$(LIBCQ) \
@@ -138,12 +131,13 @@ example_LDADD = \
 # test-mff binary #
 test_mff_SOURCES = \
 	test/catch.hpp \
-	test/test-io.cpp \
-	test/test-cq.cpp \
+	test/helpers.h \
+	test/test-cq-bitcoin.cpp \
+	test/test-cqb-primitives.cpp \
 	test/test-mff.cpp
 test_mff_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
-test_mff_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-test_mff_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
+test_mff_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
+test_mff_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
 test_mff_LDADD = \
 	$(LIBCQ) \

@@ -104,7 +104,7 @@ CAmount output_amount(const uint256& txid, int index) {
     size_t amounts;
     af >> VARINT(amounts);
     assert(amounts > index);
-    uint64_t amt;
+    uint64_t amt = 0;
     for (int i = 0; i <= index; i++) af >> VARINT(amt);
     return amt;
     // af closes fp

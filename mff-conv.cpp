@@ -93,7 +93,7 @@ int main(int argc, char* const* argv) {
 
     std::string mempool_file = ca.m.count('p') ? ca.m['p'] : "";
 
-    bool verbose = ca.m.count('v');
+    // bool verbose = ca.m.count('v');
     bool overwrite_output = ca.m.count('x');
 
     if (overwrite_output) {
@@ -166,7 +166,7 @@ int main(int argc, char* const* argv) {
     int64_t last_time = out->last_time;
     int64_t start_time = GetTime();
     int64_t entry_start = 0;
-    int64_t internal_time;
+    int64_t internal_time = 0;
     for (auto& n : c.nodes) {
         n->shared_time = &internal_time;
     }
