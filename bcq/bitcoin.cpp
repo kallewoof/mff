@@ -1,4 +1,4 @@
-#include <cq/bitcoin.h>
+#include <bcq/bitcoin.h>
 
 namespace bitcoin {
 

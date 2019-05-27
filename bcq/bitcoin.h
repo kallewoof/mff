@@ -1,13 +1,12 @@
-#ifndef included_cq_bitcoin_h_
-#define included_cq_bitcoin_h_
+#ifndef included_bcq_bitcoin_h_
+#define included_bcq_bitcoin_h_
 
 #include <map>
 
 #include <inttypes.h>
 
 #include <cqdb/cq.h>
-#include <uint256.h>
-#include <tinyformat.h>
+#include <cqdb/uint256.h>
 
 namespace bitcoin {
 
@@ -116,7 +115,7 @@ struct tx : public cq::object {
     }
 
     std::string to_string() const {
-        std::string s = strprintf("tx(%s):", m_hash.ToString());
+        std::string s = std::string("tx(") + m_hash.ToString() + "):";
         for (auto& o : m_vin) {
             s += "\n\t" + (o.m_state == outpoint::state_confirmed ? "<found in block>" : o.to_string());
         }
@@ -471,4 +470,4 @@ public:
 
 } // namespace bitcoin
 
-#endif // included_cq_bitcoin_h_
+#endif // included_bcq_bitcoin_h_
