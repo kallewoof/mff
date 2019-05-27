@@ -41,6 +41,8 @@ void tx::serialize(cq::serializer* stream) const {
         }
         o.serialize(stream);
     }
+    cq::varint(m_vout.size()).serialize(stream);
+    for (auto& o : m_vout) cq::varint(o).serialize(stream);
 }
 
 void tx::deserialize(cq::serializer* stream) {
@@ -65,6 +67,9 @@ void tx::deserialize(cq::serializer* stream) {
         }
         o.deserialize(stream);
     }
+    size_t vout_sz = cq::varint::load(stream);
+    m_vout.resize(vout_sz);
+    for (size_t i = 0; i < vout_sz; ++i) m_vout[i] = cq::varint::load(stream);
 }
 
 void block::serialize(cq::serializer* stream) const {

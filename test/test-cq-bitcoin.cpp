@@ -113,7 +113,7 @@ TEST_CASE("mff", "[mff]") {
             auto prein = mff->m_file->tell();
             mff->tx_entered(1558067028, ob);
             auto len = mff->m_file->tell() - prein;
-            REQUIRE(len < 3); // a maximum of 2 bytes to refer to ob, as it is relatively recent
+            REQUIRE(len <= 3); // a maximum of 3 bytes to refer to ob, as it is relatively recent
         }
         {
             auto mff = open_mff(&azr);

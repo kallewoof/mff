@@ -101,7 +101,7 @@ struct tx : public cq::object {
     uint64_t m_fee;
 
     std::vector<outpoint> m_vin;
-    std::vector<uint64_t> m_amounts; // memory only
+    std::vector<uint64_t> m_vout;
 
     inline double feerate() const { return double(m_fee)/double(vsize()); }
     inline uint64_t vsize() const { return (m_weight + 3)/4; }
@@ -136,9 +136,8 @@ struct tx : public cq::object {
             assert(&o != &ocopy);
             assert(o == ocopy);
         }
-        for (uint64_t a : t.m_amounts) {
-            m_amounts.push_back(a);
-        }
+        m_vout.clear();
+        m_vout.insert(m_vout.begin(), t.m_vout.begin(), t.m_vout.end());
     }
 
     prepare_for_serialization();

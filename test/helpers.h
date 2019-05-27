@@ -8,14 +8,22 @@ static inline uint256 random_hash() {
     return hash;
 }
 
+static inline uint8_t random_byte()  { uint8_t u8; cq::randomize(&u8, 1); return u8; }
+static inline uint16_t random_word() { uint16_t u16; cq::randomize(&u16, 2); return u16; }
+
 static inline std::shared_ptr<bitcoin::tx> make_random_tx() {
     auto t = std::make_shared<bitcoin::tx>();
     t->m_hash = random_hash();
+    auto vin_sz = random_byte() % 10;
+    for (auto i = 0; i < vin_sz; ++i) {
+        t->m_vin.emplace_back(random_byte(), random_hash());
+    }
+    auto vout_sz = random_byte() % 10;
+    for (auto i = 0; i < vout_sz; ++i) {
+        t->m_vout.push_back(random_word());
+    }
     return t;
 }
-
-static inline uint8_t random_byte()  { uint8_t u8; cq::randomize(&u8, 1); return u8; }
-static inline uint16_t random_word() { uint16_t u16; cq::randomize(&u16, 2); return u16; }
 
 static inline std::set<std::shared_ptr<bitcoin::tx>> random_txs() {
     uint8_t u8 = random_byte();
