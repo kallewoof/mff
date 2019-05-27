@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 The Bitcoin Core developers
+# Copyright (c) 2013-2019 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,14 +10,16 @@ BITCOIN_INCLUDES=-I$(builddir)
 
 LIBBITCOIN=libbitcoin.a
 LIBMFF=libmff.a
-LIBCQ=libcq.a
+LIBBCQ=libbcq.a
 
 EXTRA_LIBRARIES += \
   $(LIBBITCOIN) \
   $(LIBMFF) \
-  $(LIBCQ)
+  $(LIBBCQ)
 
-bin_PROGRAMS = mff-reader mff-conv aj2bin example test-mff
+bin_PROGRAMS = mff-reader mff-conv aj2bin
+noinst_PROGRAMS = example test-mff
+lib_LIBRARIES = libbcq.a
 
 .PHONY: FORCE check-symbols check-security
 # bitcoin core #
@@ -58,13 +60,15 @@ libmff_a_SOURCES = \
 libmff_a_CPPFLAGS = $(AM_CPPFLAGS)
 libmff_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
-# CQ library (which uses libcqdb) #
+# CQ library (which uses libbcqdb) #
 
-libcq_a_SOURCES = \
-	cq/bitcoin.cpp \
-	cq/bitcoin.h
-libcq_a_CPPFLAGS = $(AM_CPPFLAGS)
-libcq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
+libbcq_a_SOURCES = \
+	bcq/bitcoin.cpp \
+	bcq/bitcoin.h
+libbcq_a_CPPFLAGS = $(AM_CPPFLAGS)
+libbcq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
+bcqdbincludedir = $(includedir)/bcq
+bcqdbinclude_HEADERS = bcq/bitcoin.h
 
 # mff-reader binary #
 mff_reader_SOURCES = \
@@ -119,13 +123,13 @@ aj2bin_LDADD = \
 
 # example binary #
 example_SOURCES = \
-	cq/example.cpp
+	bcq/example.cpp
 example_CPPFLAGS = $(AM_CPPFLAGS)
 example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
 example_LDADD = \
-	$(LIBCQ) \
+	$(LIBBCQ) \
 	$(LIBBITCOIN)
 
 # test-mff binary #
@@ -140,7 +144,7 @@ test_mff_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 test_mff_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
 test_mff_LDADD = \
-	$(LIBCQ) \
+	$(LIBBCQ) \
 	$(LIBBITCOIN)
 
 clean-local:
@@ -160,3 +164,6 @@ endif
 %.pb.cc %.pb.h: %.proto
 	@test -f $(PROTOC)
 	$(AM_V_GEN) $(PROTOC) --cpp_out=$(@D) --proto_path=$(<D) $<
+
+uninstall-hook:
+	-rmdir ${bcqdbincludedir}
