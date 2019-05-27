@@ -1,6 +1,6 @@
 #include "catch.hpp"
 
-#include <cq/bitcoin.h>
+#include <bcq/bitcoin.h>
 
 #include "helpers.h"
 

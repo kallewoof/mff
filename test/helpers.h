@@ -1,6 +1,10 @@
 #include <memory>
-#include <cq/bitcoin.h>
+#include <bcq/bitcoin.h>
 #include <cqdb/uint256.h>
+
+#ifndef REQUIRE
+#   define REQUIRE assert
+#endif
 
 static inline uint256 random_hash() {
     uint256 hash;
