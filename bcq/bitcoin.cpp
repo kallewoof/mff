@@ -124,7 +124,8 @@ std::string mff_analyzer::to_string() const {
 
 void mff_mempool_callback::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
     const auto& tref = entry->x;
-    auto ex = m_mff->tretch(tref->hash) ?: std::make_shared<tx>(*entry);
+    auto ex = m_mff->tretch(tref->hash);
+    if (!ex) ex = std::make_shared<tx>(*entry);
     m_mff->tx_entered(m_current_time, ex);
 }
 
@@ -132,7 +133,9 @@ void mff_mempool_callback::discard(std::shared_ptr<const tiny::mempool_entry>& e
     cq::chv_stream s;
     const auto& tref = *entry->x;
     tref.Serialize(s);
-    m_mff->tx_discarded(m_current_time, m_mff->tretch(tref.hash) ?: std::make_shared<tx>(*entry), s.get_chv(), reason, cause ? m_mff->tretch(cause->hash) : nullptr);
+    auto ex = m_mff->tretch(tref.hash);
+    if (!ex) ex = std::make_shared<tx>(*entry);
+    m_mff->tx_discarded(m_current_time, ex, s.get_chv(), reason, cause ? m_mff->tretch(cause->hash) : nullptr);
 }
 
 void mff_mempool_callback::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) {
@@ -150,7 +153,11 @@ void mff_mempool_callback::remove_entry(std::shared_ptr<const tiny::mempool_entr
     case tiny::MemPoolRemovalReason::REORG:     //! Removed for reorganization
         return discard(entry, mff::reason_reorg, cause);
     case tiny::MemPoolRemovalReason::BLOCK:     //! Removed for block
-        m_pending_btxs.insert(m_mff->tretch(tref.hash) ?: std::make_shared<tx>(*entry));
+        {
+            auto ex = m_mff->tretch(tref.hash);
+            if (!ex) ex = std::make_shared<tx>(*entry);
+            m_pending_btxs.insert(ex);
+        }
         return;
     case tiny::MemPoolRemovalReason::CONFLICT:  //! Removed for conflict with in-block transaction
         return discard(entry, mff::reason_conflict, cause);
