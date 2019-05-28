@@ -24,52 +24,17 @@ TEST_CASE("Outpoint", "[outpoints]") {
 
     SECTION("construction") {
         {
-            outpoint op(123, 456);
+            outpoint op(123, uint256());
             REQUIRE(op.m_n == 123);
-            REQUIRE(op.m_sid == 456);
-            REQUIRE(op.m_hash.IsNull());
+            REQUIRE(op.m_txid.IsNull());
         }
         {
             auto hash = random_hash();
             outpoint op(123, hash);
             REQUIRE(op.m_n == 123);
-            REQUIRE(op.m_sid == cq::unknownid);
-            REQUIRE(op.m_hash == hash);
+            REQUIRE(op.m_txid == hash);
             outpoint op2(op);
             REQUIRE(op == op2);
-        }
-    }
-
-    //     void set(const uint256& txid) {
-    //         m_sid = cq::nullid;
-    //         m_hash = txid;
-    //     }
-
-    //     void set(cq::id sid) {
-    //         m_sid = sid;
-    //         m_hash.SetNull();
-    //     }
-
-    SECTION("setting") {
-        {
-            auto hash = random_hash();
-            outpoint op(123, 456);
-            op.set(789);
-            REQUIRE(op.m_sid == 789);
-            REQUIRE(op.m_hash.IsNull());
-            op.set(hash);
-            REQUIRE(op.m_sid == cq::unknownid);
-            REQUIRE(op.m_hash == hash);
-        }
-        {
-            auto hash = random_hash();
-            outpoint op(123, hash);
-            op.set(789);
-            REQUIRE(op.m_sid == 789);
-            REQUIRE(op.m_hash.IsNull());
-            op.set(hash);
-            REQUIRE(op.m_sid == cq::unknownid);
-            REQUIRE(op.m_hash == hash);
         }
     }
 
@@ -77,18 +42,9 @@ TEST_CASE("Outpoint", "[outpoints]") {
 
     SECTION("coinbase") {
         outpoint cbop = outpoint::coinbase();
-        REQUIRE(cbop.m_hash.IsNull());
+        REQUIRE(cbop.m_txid.IsNull());
         REQUIRE(cbop.m_n == 0xffffffff);
-        REQUIRE(cbop.m_sid == cq::unknownid);
         REQUIRE(cbop == outpoint::coinbase());
-    }
-
-    //     uint64_t get_n()          const { return m_n; }
-
-    SECTION("get_n()") {
-        outpoint op(123, 456);
-        const outpoint const_op(op);
-        REQUIRE(const_op.get_n() == 123);
     }
 
     //     std::string to_string() const {
@@ -108,11 +64,12 @@ TEST_CASE("Outpoint", "[outpoints]") {
 
     SECTION("serialization") {
         auto hash = random_hash();
-        outpoint op1(123, 2);
+        outpoint op1(123, hash);
         cq::chv_stream stream;
         op1.serialize(&stream);
         stream.seek(0, SEEK_SET);
-        outpoint op1x(0, 2);
+        outpoint op1x;
+        op1x.m_txid = hash;
         op1x.deserialize(&stream);
         REQUIRE(op1.to_string() == op1x.to_string());
         REQUIRE(op1 == op1x);

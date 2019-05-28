@@ -123,6 +123,8 @@ aj2bin_LDADD = \
 
 # example binary #
 example_SOURCES = \
+	ajb.h \
+	ajb.cpp \
 	bcq/example.cpp
 example_CPPFLAGS = $(AM_CPPFLAGS)
 example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include

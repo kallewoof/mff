@@ -43,7 +43,8 @@ static const uint256 some_hash = uint256S("0102030405060708090a0b0c0d0e0f1011121
 
 inline std::shared_ptr<bitcoin::mff> open_mff(bitcoin::mff_delegate* delegate, const std::string& dbpath = default_dbpath, bool reset = false) {
     if (reset) cq::rmdir_r(dbpath);
-    auto rv = std::make_shared<bitcoin::mff>(delegate, dbpath);
+    auto rv = std::make_shared<bitcoin::mff>(dbpath);
+    rv->m_delegate = delegate;
     rv->load();
     return rv;
 }

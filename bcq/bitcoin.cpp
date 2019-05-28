@@ -18,28 +18,33 @@ const uint8_t mff::reason_reorg;
 const uint8_t mff::reason_conflict;
 const uint8_t mff::reason_replaced;
 
+tx::tx(const tiny::mempool_entry& entry) {
+    auto tref = *entry.x;
+    m_sid = cq::unknownid;
+    m_hash = tref.hash;
+    m_weight = tref.GetWeight();
+    m_fee = entry.fee();
+    m_vin.clear();
+    m_vout.clear();
+    for (const auto& vin : tref.vin) {
+        const auto& prevout = vin.prevout;
+        m_vin.push_back(bitcoin::outpoint(prevout));
+    }
+    for (const auto& vout : tref.vout) {
+        m_vout.push_back(vout.value);
+    }
+}
+
 void tx::serialize(cq::serializer* stream) const {
     // we do in fact serialize the txid here
-    m_hash.Serialize(*stream);
-    // then weight, fee
-    cq::varint(m_weight).serialize(stream);
-    cq::varint(m_fee).serialize(stream);
-    // finally, we serialize the inputs
-    cq::varint(m_vin.size()).serialize(stream);
+    *stream << m_hash << cq::varint(m_weight) << cq::varint(m_fee);
+    {
+        std::vector<uint256> vin_txids;
+        for (const auto& in : m_vin) vin_txids.push_back(in.m_txid);
+        stream->m_compressor->compress(stream, vin_txids);
+    }
     for (auto& o : m_vin) {
-        *stream << o.m_state;
-        switch (o.m_state) {
-        case outpoint::state_unknown:
-            o.m_hash.Serialize(*stream);
-            break;
-        case outpoint::state_known:
-            cq::varint(stream->tell() - o.m_sid).serialize(stream);
-            break;
-        case outpoint::state_coinbase:
-        case outpoint::state_confirmed: // ????
-            break;
-        }
-        o.serialize(stream);
+        *stream << o;
     }
     cq::varint(m_vout.size()).serialize(stream);
     for (auto& o : m_vout) cq::varint(o).serialize(stream);
@@ -49,23 +54,14 @@ void tx::deserialize(cq::serializer* stream) {
     m_hash.Unserialize(*stream);
     m_weight = cq::varint::load(stream);
     m_fee = cq::varint::load(stream);
-    size_t vin_sz = cq::varint::load(stream);
+    std::vector<uint256> vin_txids;
+    stream->m_compressor->decompress(stream, vin_txids);
+    size_t vin_sz = vin_txids.size();
     m_vin.resize(vin_sz);
     for (size_t i = 0; i < vin_sz; ++i) {
         outpoint& o = m_vin[i];
-        *stream >> o.m_state;
-        switch (o.m_state) {
-        case outpoint::state_unknown:
-            o.m_hash.Unserialize(*stream);
-            break;
-        case outpoint::state_known:
-            o.m_sid = stream->tell() - cq::varint::load(stream);
-            break;
-        case outpoint::state_coinbase:
-        case outpoint::state_confirmed: // ????
-            break;
-        }
-        o.deserialize(stream);
+        o.m_txid = vin_txids[i];
+        *stream >> o;
     }
     size_t vout_sz = cq::varint::load(stream);
     m_vout.resize(vout_sz);
@@ -124,6 +120,60 @@ std::string mff_analyzer::to_string() const {
     case mff::cmd_block_unmined: X("unmined %u", last_unmined_height);
     default: return "!!!!??????";
     }
+}
+
+void mff_mempool_callback::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
+    const auto& tref = entry->x;
+    auto ex = m_mff->tretch(tref->hash) ?: std::make_shared<tx>(*entry);
+    m_mff->tx_entered(m_current_time, ex);
+}
+
+void mff_mempool_callback::discard(std::shared_ptr<const tiny::mempool_entry>& entry, uint8_t reason, std::shared_ptr<tiny::tx>& cause) {
+    cq::chv_stream s;
+    const auto& tref = *entry->x;
+    tref.Serialize(s);
+    m_mff->tx_discarded(m_current_time, m_mff->tretch(tref.hash) ?: std::make_shared<tx>(*entry), s.get_chv(), reason, cause ? m_mff->tretch(cause->hash) : nullptr);
+}
+
+void mff_mempool_callback::remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) {
+    // do we know this transaction?
+    const auto& tref = *entry->x;
+    bool known = m_mff->m_references.count(tref.hash);
+
+    switch (reason) {
+    case tiny::MemPoolRemovalReason::EXPIRY:    //! Expired from mempool
+        if (!known) return;
+        return m_mff->tx_left(m_current_time, m_mff->tretch(tref.hash), mff::reason_expired, cause ? m_mff->tretch(cause->hash) : nullptr);
+    case tiny::MemPoolRemovalReason::SIZELIMIT: //! Removed in size limiting
+        if (!known) return;
+        return m_mff->tx_left(m_current_time, m_mff->tretch(tref.hash), mff::reason_sizelimit, cause ? m_mff->tretch(cause->hash) : nullptr);
+    case tiny::MemPoolRemovalReason::REORG:     //! Removed for reorganization
+        return discard(entry, mff::reason_reorg, cause);
+    case tiny::MemPoolRemovalReason::BLOCK:     //! Removed for block
+        m_pending_btxs.insert(m_mff->tretch(tref.hash) ?: std::make_shared<tx>(*entry));
+        return;
+    case tiny::MemPoolRemovalReason::CONFLICT:  //! Removed for conflict with in-block transaction
+        return discard(entry, mff::reason_conflict, cause);
+    case tiny::MemPoolRemovalReason::REPLACED:  //! Removed for replacement
+        return discard(entry, mff::reason_replaced, cause);
+    case tiny::MemPoolRemovalReason::UNKNOWN:   //! Manually removed or unknown reason
+    default:
+        // TX_OUT(REASON=2) -or- TX_INVALID(REASON=3)
+        // If there is a cause, we use invalid, otherwise out
+        if (cause) {
+            return discard(entry, mff::reason_unknown, cause);
+        }
+        return m_mff->tx_left(m_current_time, m_mff->tretch(tref.hash), mff::reason_unknown, nullptr);
+    }
+}
+
+void mff_mempool_callback::push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs) {
+    m_mff->confirm_block(m_current_time, height, hash, m_pending_btxs);
+    m_pending_btxs.clear();
+}
+
+void mff_mempool_callback::pop_block(int height) {
+    while (m_mff->get_height() >= height) m_mff->unconfirm_tip(m_current_time);
 }
 
 } // namespace bitcoin

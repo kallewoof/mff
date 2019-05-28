@@ -61,17 +61,17 @@ TEST_CASE("mff", "[mff]") {
             auto mff = open_mff(&azr);
             // opening should automatically read up to the end and load in any objects
             // in the process, which means we should from the get-go have 'ob' again
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             REQUIRE(mff->m_references.count(ob->m_hash));
             REQUIRE(ob->m_sid == mff->m_references.at(ob->m_hash));
             REQUIRE(mff->m_dictionary.count(ob->m_sid));
             REQUIRE(*ob == *mff->m_dictionary.at(ob->m_sid));
             // now rewind and read again
             mff->m_file->seek(pos, SEEK_SET);
-            mff->current_time = 0;
+            mff->m_current_time = 0;
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_in);
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             REQUIRE(azr.last_txs.size() == 1);
             REQUIRE(*azr.last_txs.back() == *ob);
             REQUIRE(!mff->iterate());
@@ -96,11 +96,11 @@ TEST_CASE("mff", "[mff]") {
             mff->begin_segment(500000);
             pos = mff->m_file->tell();
             mff->tx_entered(1558067026, ob);
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             mff->tx_entered(1558067026, ob2);
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             mff->tx_left(1558067027, ob, bitcoin::mff::reason_sizelimit);
-            REQUIRE(mff->current_time == 1558067027);
+            REQUIRE(mff->m_current_time == 1558067027);
             REQUIRE(mff->m_references.count(ob->m_hash));
             REQUIRE(mff->m_references.count(ob2->m_hash));
             REQUIRE(ob->m_sid  == mff->m_references.at(ob->m_hash));
@@ -117,7 +117,7 @@ TEST_CASE("mff", "[mff]") {
         }
         {
             auto mff = open_mff(&azr);
-            REQUIRE(mff->current_time == 1558067028);
+            REQUIRE(mff->m_current_time == 1558067028);
             REQUIRE(mff->m_references.count(ob->m_hash));
             REQUIRE(mff->m_references.count(ob2->m_hash));
             REQUIRE(ob->m_sid  == mff->m_references.at(ob->m_hash));
@@ -128,25 +128,25 @@ TEST_CASE("mff", "[mff]") {
             REQUIRE(*ob2 == *mff->m_dictionary.at(ob2->m_sid));
             // now rewind and read again
             mff->m_file->seek(pos, SEEK_SET);
-            mff->current_time = 0;
+            mff->m_current_time = 0;
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_in);
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             REQUIRE(azr.last_txs.size() == 1);
             REQUIRE(*azr.last_txs.back() == *ob);
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_in);
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             REQUIRE(azr.last_txs.size() == 1);
             REQUIRE(*azr.last_txs.back() == *ob2);
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_out);
-            REQUIRE(mff->current_time == 1558067027);
+            REQUIRE(mff->m_current_time == 1558067027);
             REQUIRE(azr.last_txs.size() == 0);
             REQUIRE(azr.last_txids.back() == ob->m_hash);
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_in);
-            REQUIRE(mff->current_time == 1558067028);
+            REQUIRE(mff->m_current_time == 1558067028);
             REQUIRE(azr.last_txids.size() == 1);
             REQUIRE(azr.last_txids.back() == ob->m_hash);
             REQUIRE(!mff->iterate());
@@ -177,7 +177,7 @@ TEST_CASE("mff", "[mff]") {
             mff->tx_entered(1558067027, ob3);
             std::vector<uint8_t> a{0x01, 0x02, 0x03};
             mff->tx_discarded(1558067028, ob2, (a), bitcoin::mff::reason_replaced, ob3);
-            REQUIRE(mff->current_time == 1558067028);
+            REQUIRE(mff->m_current_time == 1558067028);
             REQUIRE(mff->m_references.count(ob->m_hash));
             REQUIRE(mff->m_references.count(ob2->m_hash));
             REQUIRE(mff->m_references.count(ob3->m_hash));
@@ -193,7 +193,7 @@ TEST_CASE("mff", "[mff]") {
         }
         {
             auto mff = open_mff(&azr);
-            REQUIRE(mff->current_time == 1558067028);
+            REQUIRE(mff->m_current_time == 1558067028);
             REQUIRE(mff->m_references.count(ob->m_hash));
             REQUIRE(mff->m_references.count(ob2->m_hash));
             REQUIRE(mff->m_references.count(ob3->m_hash));
@@ -208,25 +208,25 @@ TEST_CASE("mff", "[mff]") {
             REQUIRE(*ob3 == *mff->m_dictionary.at(ob3->m_sid));
             // now rewind and read again
             mff->m_file->seek(pos, SEEK_SET);
-            mff->current_time = 0;
+            mff->m_current_time = 0;
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_in);
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             REQUIRE(azr.last_txs.size() == 1);
             REQUIRE(*azr.last_txs.back() == *ob);
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_in);
-            REQUIRE(mff->current_time == 1558067026);
+            REQUIRE(mff->m_current_time == 1558067026);
             REQUIRE(azr.last_txs.size() == 1);
             REQUIRE(*azr.last_txs.back() == *ob2);
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_in);
-            REQUIRE(mff->current_time == 1558067027);
+            REQUIRE(mff->m_current_time == 1558067027);
             REQUIRE(azr.last_txs.size() == 1);
             REQUIRE(*azr.last_txs.back() == *ob3);
             REQUIRE(mff->iterate());
             REQUIRE(azr.last_command == bitcoin::mff::cmd_mempool_invalidated);
-            REQUIRE(mff->current_time == 1558067028);
+            REQUIRE(mff->m_current_time == 1558067028);
             REQUIRE(azr.last_txs.size() == 0);
             REQUIRE(azr.last_txids.size() == 1);
             REQUIRE(azr.last_txids.back() == ob2->m_hash);
@@ -285,7 +285,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     // fprintf(stderr, "tx in\n");
                     tx = make_random_tx();
                     t += tx;
-                    mff->tx_entered(mff->current_time + 1, tx);
+                    mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
                     break;
                 case 4: // tx out
@@ -294,7 +294,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     if (t.size() == 0) continue;
                     tx = t.sample();
                     reason = random_byte() % 6;
-                    mff->tx_left(mff->current_time + 1, tx, reason);
+                    mff->tx_left(mff->m_current_time + 1, tx, reason);
                     t -= tx;
                     REC(record_mempool_out(tx->m_hash, reason));
                     break;
@@ -316,7 +316,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         tx = t.sample();
                     }
                     reason = random_byte() % 6;
-                    mff->tx_discarded(mff->current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
+                    mff->tx_discarded(mff->m_current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
                     t -= tx;
                     if (offender.get()) {
                         REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, offender->m_hash, reason, true /* todo: offender is always known */));
@@ -327,7 +327,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 7: // block confirm
                     // fprintf(stderr, "block confirm (%u)\n", height);
                     {
-                        auto b = t.mine_block(mff->current_time + 1, ++height);
+                        auto b = t.mine_block(mff->m_current_time + 1, ++height);
                         // if (i < 100) fprintf(stderr, "mine block %u\n", height);
                         REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
                     }
@@ -346,7 +346,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         else             reorgs = 1;
                         if (reorgs > max_reorgs) reorgs = max_reorgs;
                         // fprintf(stderr, "block reorg (max=%zu, count=%zu)\n", max_reorgs, reorgs);
-                        long timestamp = mff->current_time + 1;
+                        long timestamp = mff->m_current_time + 1;
                         for (size_t i = 0; i < reorgs; ++i) {
                             REC(record_block_unmined(height));
                             t.unconfirm_tip(timestamp);
@@ -371,7 +371,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             auto mff = open_mff(&azr);
             // now rewind and read again
             mff->goto_segment(500000);
-            mff->current_time = 0;
+            mff->m_current_time = 0;
             // replay should be identical to record
             for (rec = head.m_next; rec; rec = rec->m_next) {
                 // should have another entry, as long as rec is !null
@@ -413,7 +413,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     // fprintf(stderr, "tx in\n");
                     tx = make_random_tx();
                     t += tx;
-                    mff->tx_entered(mff->current_time + 1, tx);
+                    mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
                     break;
                 case 4: // tx out
@@ -422,7 +422,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     if (t.size() == 0) continue;
                     tx = t.sample();
                     reason = random_byte() % 6;
-                    mff->tx_left(mff->current_time + 1, tx, reason);
+                    mff->tx_left(mff->m_current_time + 1, tx, reason);
                     t -= tx;
                     REC(record_mempool_out(tx->m_hash, reason));
                     break;
@@ -444,7 +444,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         tx = t.sample();
                     }
                     reason = random_byte() % 6;
-                    mff->tx_discarded(mff->current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
+                    mff->tx_discarded(mff->m_current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
                     t -= tx;
                     if (offender.get()) {
                         REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, offender->m_hash, reason, true /* todo: offender is always known */));
@@ -455,7 +455,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 7: // block confirm
                     // fprintf(stderr, "block confirm (%u)\n", height);
                     {
-                        auto b = t.mine_block(mff->current_time + 1, ++height);
+                        auto b = t.mine_block(mff->m_current_time + 1, ++height);
                         // if (i < 100) fprintf(stderr, "mine block %u\n", height);
                         REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
                     }
@@ -474,7 +474,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         else             reorgs = 1;
                         if (reorgs > max_reorgs) reorgs = max_reorgs;
                         // fprintf(stderr, "block reorg (max=%zu, count=%zu)\n", max_reorgs, reorgs);
-                        long timestamp = mff->current_time + 1;
+                        long timestamp = mff->m_current_time + 1;
                         for (size_t i = 0; i < reorgs; ++i) {
                             REC(record_block_unmined(height));
                             t.unconfirm_tip(timestamp);
@@ -499,7 +499,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             auto mff = open_mff(&azr);
             // now rewind and read again
             mff->goto_segment(500000);
-            mff->current_time = 0;
+            mff->m_current_time = 0;
             // replay should be identical to record
             for (rec = head.m_next; rec; rec = rec->m_next) {
                 // should have another entry, as long as rec is !null
@@ -541,7 +541,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     // fprintf(stderr, "tx in\n");
                     tx = make_random_tx();
                     t += tx;
-                    mff->tx_entered(mff->current_time + 1, tx);
+                    mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
                     break;
                 case 4: // tx out
@@ -550,7 +550,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     if (t.size() == 0) continue;
                     tx = t.sample();
                     reason = random_byte() % 6;
-                    mff->tx_left(mff->current_time + 1, tx, reason);
+                    mff->tx_left(mff->m_current_time + 1, tx, reason);
                     t -= tx;
                     REC(record_mempool_out(tx->m_hash, reason));
                     break;
@@ -572,7 +572,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         tx = t.sample();
                     }
                     reason = random_byte() % 6;
-                    mff->tx_discarded(mff->current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
+                    mff->tx_discarded(mff->m_current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
                     t -= tx;
                     if (offender.get()) {
                         REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, offender->m_hash, reason, true /* todo: offender is always known */));
@@ -583,7 +583,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 7: // block confirm
                     // fprintf(stderr, "block confirm (%u)\n", height);
                     {
-                        auto b = t.mine_block(mff->current_time + 1, ++height);
+                        auto b = t.mine_block(mff->m_current_time + 1, ++height);
                         // if (i < 100) fprintf(stderr, "mine block %u\n", height);
                         REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
                     }
@@ -602,7 +602,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         else             reorgs = 1;
                         if (reorgs > max_reorgs) reorgs = max_reorgs;
                         // fprintf(stderr, "block reorg (max=%zu, count=%zu)\n", max_reorgs, reorgs);
-                        long timestamp = mff->current_time + 1;
+                        long timestamp = mff->m_current_time + 1;
                         for (size_t i = 0; i < reorgs; ++i) {
                             REC(record_block_unmined(height));
                             t.unconfirm_tip(timestamp);
@@ -627,7 +627,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             auto mff = open_mff(&azr);
             // now rewind and read again
             mff->goto_segment(500000);
-            mff->current_time = 0;
+            mff->m_current_time = 0;
             // replay should be identical to record
             for (rec = head.m_next; rec; rec = rec->m_next) {
                 // should have another entry, as long as rec is !null
@@ -669,7 +669,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     // fprintf(stderr, "tx in\n");
                     tx = make_random_tx();
                     t += tx;
-                    mff->tx_entered(mff->current_time + 1, tx);
+                    mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
                     break;
                 case 4: // tx out
@@ -678,7 +678,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                     if (t.size() == 0) continue;
                     tx = t.sample();
                     reason = random_byte() % 6;
-                    mff->tx_left(mff->current_time + 1, tx, reason);
+                    mff->tx_left(mff->m_current_time + 1, tx, reason);
                     t -= tx;
                     REC(record_mempool_out(tx->m_hash, reason));
                     break;
@@ -700,7 +700,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         tx = t.sample();
                     }
                     reason = random_byte() % 6;
-                    mff->tx_discarded(mff->current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
+                    mff->tx_discarded(mff->m_current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
                     t -= tx;
                     if (offender.get()) {
                         REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, offender->m_hash, reason, true /* todo: offender is always known */));
@@ -711,7 +711,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 7: // block confirm
                     // fprintf(stderr, "block confirm (%u)\n", height);
                     {
-                        auto b = t.mine_block(mff->current_time + 1, ++height);
+                        auto b = t.mine_block(mff->m_current_time + 1, ++height);
                         // if (i < 100) fprintf(stderr, "mine block %u\n", height);
                         REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
                     }
@@ -730,7 +730,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                         else             reorgs = 1;
                         if (reorgs > max_reorgs) reorgs = max_reorgs;
                         // fprintf(stderr, "block reorg (max=%zu, count=%zu)\n", max_reorgs, reorgs);
-                        long timestamp = mff->current_time + 1;
+                        long timestamp = mff->m_current_time + 1;
                         for (size_t i = 0; i < reorgs; ++i) {
                             REC(record_block_unmined(height));
                             t.unconfirm_tip(timestamp);
@@ -755,7 +755,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             auto mff = open_mff(&azr);
             // now rewind and read again
             mff->goto_segment(500000);
-            mff->current_time = 0;
+            mff->m_current_time = 0;
             // replay should be identical to record
             for (rec = head.m_next; rec; rec = rec->m_next) {
                 // should have another entry, as long as rec is !null

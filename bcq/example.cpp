@@ -1,21 +1,26 @@
 #include <bcq/bitcoin.h>
 #include <test/helpers.h>
+#include <serialize.h>
+#include <tinymempool.h>
+#include <ajb.h>
 
 int main(int argc, const char** argv) {
-    bitcoin::mff_analyzer alr;
-    bitcoin::mff* db;
-    if (argc < 2) {
-        fprintf(stderr, "syntax: %s <db path>\n", argv[0]);
+    if (argc < 3) {
+        fprintf(stderr, "syntax: %s <db path> <ajb path>\n", argv[0]);
         return 1;
     }
 
-    db = new bitcoin::mff(&alr, argv[1], "example");
-
-    auto tx1 = make_random_tx();
-    auto tx2 = make_random_tx();
-
-    db->push_event(1, 0, tx1, false);
-
-    fprintf(stderr, "db stell: %s\n", db->stell().c_str());
-    delete db;
+    // mempool object will handle tx purge, double spends (conflicts), block confirmations, and the like
+    auto mempool = std::make_shared<tiny::mempool>();
+    // mff handles the mempool file format disk I/O; it is our destination in this case
+    // output is to arg 1 (a dir)
+    auto mff = std::make_shared<bitcoin::mff>(argv[1], "example");
+    // ajb is the source (AJ binary); it slightly depends on the MFF object for seeing if items are
+    // known beforehand or not, but this is only an optimization
+    // input is arg 2 (a file)
+    mff::ajb a(mff, mempool, argv[2]);
+    // the mempool callback routes mempool operations into mff commands; it also hooks up to the AJB
+    // object's timer
+    bitcoin::mff_mempool_callback mempool_callback(a.current_time, mff);
+    mempool->callback = &mempool_callback;
 }

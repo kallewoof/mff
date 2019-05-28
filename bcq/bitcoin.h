@@ -7,55 +7,48 @@
 
 #include <cqdb/cq.h>
 #include <cqdb/uint256.h>
+#include <tinymempool.h>
+
+#define BITCOIN_SER(T) \
+    template<typename Stream> void serialize(Stream& stm, const T& t) { t.Serialize(stm); } \
+    template<typename Stream> void unserialize(Stream& stm, T& t) { t.Unserialize(stm); }
+
+BITCOIN_SER(uint256);
+
+namespace tiny {
+
+BITCOIN_SER(txin);
+BITCOIN_SER(txout);
+
+}
 
 namespace bitcoin {
 
-struct outpoint : public cq::object {
-    enum state_t: uint8_t {
-        state_unknown   = 0,
-        state_known     = 1,
-        state_confirmed = 2,
-        state_coinbase  = 3,
-    };
-
-    state_t m_state;
+struct outpoint : public cq::serializable {
+    uint256 m_txid;
     uint64_t m_n;
 
-    outpoint()                                : cq::object()                  { m_n = 0; }
-    outpoint(uint64_t n, cq::id sid)          : cq::object(sid)               { m_n = n; }
-    outpoint(uint64_t n, const uint256& txid) : cq::object(txid)              { m_n = n; }
-    outpoint(const outpoint& o)               : cq::object(o.m_sid, o.m_hash) { m_n = o.m_n; }
-
-    void set(const uint256& txid) {
-        m_sid = cq::unknownid;
-        m_hash = txid;
-    }
-
-    void set(cq::id sid) {
-        m_sid = sid;
-        m_hash.SetNull();
-    }
+    outpoint()                                {                    m_n = 0; }
+    outpoint(uint64_t n, const uint256& txid) { m_txid = txid;     m_n = n; }
+    outpoint(const outpoint& o)               { m_txid = o.m_txid; m_n = o.m_n; }
+    outpoint(const tiny::outpoint& o)         : outpoint(o.n, o.hash) {}
 
     static inline outpoint coinbase() { return outpoint(0xffffffff, uint256()); }
 
     bool operator==(const outpoint& other) const {
-        return m_sid != cq::unknownid
-                ? m_sid == other.m_sid
-                : m_hash == other.m_hash
-        ;
+        return m_txid == other.m_txid && m_n == other.m_n;
     }
-
-    uint64_t get_n()          const { return m_n; }
 
     std::string to_string() const {
         char s[1024];
-        if (m_sid != cq::unknownid) sprintf(s, "outpoint(known seq=%" PRIid ", n=%" PRIu64 ")", m_sid, m_n);
-        else                        sprintf(s, "outpoint(unknown txid=%s, n=%" PRIu64 ")", m_hash.ToString().c_str(), m_n);
+        // if (m_sid != cq::unknownid) sprintf(s, "outpoint(known seq=%" PRIid ", n=%" PRIu64 ")", m_sid, m_n);
+        // else                        sprintf(s, "outpoint(unknown txid=%s, n=%" PRIu64 ")", m_hash.ToString().c_str(), m_n);
+        sprintf(s, "outpoint(txid=%s, n=%" PRIu64 ")", m_txid.ToString().c_str(), m_n);
         return s;
     }
 
     virtual void serialize(cq::serializer* stream) const override {
-        cq::varint(m_n).serialize(stream);
+        *stream << cq::varint(m_n);
     }
 
     virtual void deserialize(cq::serializer* stream) override {
@@ -106,8 +99,8 @@ struct tx : public cq::object {
     inline uint64_t vsize() const { return (m_weight + 3)/4; }
     inline bool spends(const uint256& txid, const cq::id seq, uint32_t& index_out) const {
         for (const auto& prevout : m_vin) {
-            if (prevout.m_sid == seq || prevout.m_hash == txid) {
-                index_out = prevout.get_n();
+            if (prevout.m_txid == txid) {
+                index_out = prevout.m_n;
                 return true;
             }
         }
@@ -117,7 +110,7 @@ struct tx : public cq::object {
     std::string to_string() const {
         std::string s = std::string("tx(") + m_hash.ToString() + "):";
         for (auto& o : m_vin) {
-            s += "\n\t" + (o.m_state == outpoint::state_confirmed ? "<found in block>" : o.to_string());
+            s += "\n\t" + o.to_string();
         }
         return s;
     }
@@ -138,6 +131,8 @@ struct tx : public cq::object {
         m_vout.clear();
         m_vout.insert(m_vout.begin(), t.m_vout.begin(), t.m_vout.end());
     }
+
+    tx(const tiny::mempool_entry& t);
 
     prepare_for_serialization();
 };
@@ -291,10 +286,12 @@ public:
     chain m_chain;
     mff_delegate* m_delegate;
 
-    mff(mff_delegate* delegate, const std::string& dbpath, const std::string& prefix = "mff", uint32_t cluster_size = 2016)
+    mff(const std::string& dbpath, const std::string& prefix = "mff", uint32_t cluster_size = 2016)
     : chronology<tx>(dbpath, prefix, cluster_size) {
-        m_delegate = delegate;
+        m_delegate = nullptr;
     }
+
+    uint32_t get_height() const { return m_chain.m_tip; }
 
     //////////////////////////////////////////////////////////////////////////////////////
     // Writing
@@ -346,6 +343,7 @@ public:
     inline bool iterate() { return registry_iterate(m_file); }
 
     bool registry_iterate(cq::file* file) override {
+        // assert: m_delegate non-null; if null, this method will crash
         uint8_t cmd;
         bool known;
         auto pos = m_file->tell();
@@ -466,6 +464,21 @@ public:
     virtual void block_reorged(uint32_t height) override;
 
     virtual std::string to_string() const override;
+};
+
+
+class mff_mempool_callback : public tiny::mempool_callback {
+public:
+    long& m_current_time;
+    std::shared_ptr<mff> m_mff;
+    std::set<std::shared_ptr<tx>> m_pending_btxs;
+    mff_mempool_callback(long& current_time, std::shared_ptr<mff> mff) : m_current_time(current_time), m_mff(mff) {}
+    virtual void add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
+    virtual void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
+    virtual void push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs);
+    virtual void pop_block(int height);
+
+    void discard(std::shared_ptr<const tiny::mempool_entry>& entry, uint8_t reason, std::shared_ptr<tiny::tx>& cause);
 };
 
 } // namespace bitcoin
