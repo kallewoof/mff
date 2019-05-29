@@ -1,6 +1,22 @@
 #include <bcq/bitcoin.h>
+#include <streams.h>
 
 namespace bitcoin {
+
+void load_mempool(std::shared_ptr<tiny::mempool>& mempool, const std::string& path) {
+    if (!mempool.get()) {
+        mempool = std::make_shared<tiny::mempool>();
+    }
+    FILE* fp = fopen(path.c_str(), "rb");
+    CAutoFile af(fp, SER_DISK, 0);
+    af >> *mempool;
+}
+
+void save_mempool(std::shared_ptr<tiny::mempool>& mempool, const std::string& path) {
+    FILE* fp = fopen(path.c_str(), "wb");
+    CAutoFile af(fp, SER_DISK, 0);
+    af << *mempool;
+}
 
 const uint8_t mff::cmd_time_set;
 const uint8_t mff::cmd_mempool_in;

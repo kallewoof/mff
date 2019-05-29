@@ -24,6 +24,9 @@ BITCOIN_SER(txout);
 
 namespace bitcoin {
 
+void load_mempool(std::shared_ptr<tiny::mempool>& mempool, const std::string& path);
+void save_mempool(std::shared_ptr<tiny::mempool>& mempool, const std::string& path);
+
 struct outpoint : public cq::serializable {
     uint256 m_txid;
     uint64_t m_n;

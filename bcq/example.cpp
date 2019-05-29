@@ -24,6 +24,9 @@ int main(int argc, const char** argv) {
     // output is to arg 1 (a dir)
     auto mff = std::make_shared<bitcoin::mff>(argv[1], "example");
     mff->load();
+    if (cq::file::accessible(std::string(argv[1]) + "/mempool.tmp")) {
+        bitcoin::load_mempool(mempool, std::string(argv[1]) + "/mempool.tmp");
+    }
     if (!mff->m_file) mff->begin_segment(0);
     mff->enable_reflection(std::make_shared<bitcoin::mff>(argv[1], "example", 2016, true));
 
@@ -56,7 +59,10 @@ int main(int argc, const char** argv) {
             fflush(stdout);
         }
     }
-    printf("\n");
+    printf("\nwriting mempool ...");
+    fflush(stdout);
+    bitcoin::save_mempool(mempool, std::string(argv[1]) + "/mempool.tmp");
+    printf("done\n");
 }
 
 tiny::rpc* rpc = nullptr;
