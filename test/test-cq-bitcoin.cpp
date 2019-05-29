@@ -264,7 +264,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
         record* rec = &head;
         {
             bitcoin::mff_analyzer azr;
-            auto mff = new_mff(&azr);
+            auto mff = new_mff(&azr, default_dbpath, false);
             tracker t(mff);
             mff->begin_segment(500000);
             uint32_t height = 500000;
@@ -368,7 +368,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
         // fprintf(stderr, "\n\n\n* * * * REPLAYING * * * *\n\n\n");
         {
             bitcoin::mff_analyzer azr;
-            auto mff = open_mff(&azr);
+            auto mff = open_mff(&azr, default_dbpath, false);
             // now rewind and read again
             mff->goto_segment(500000);
             mff->m_current_time = 0;
@@ -392,7 +392,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
         record* rec = &head;
         {
             bitcoin::mff_analyzer azr;
-            auto mff = new_mff(&azr);
+            auto mff = new_mff(&azr, default_dbpath, false);
             tracker t(mff);
             mff->begin_segment(500000);
             uint32_t height = 500000;
@@ -496,7 +496,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
         // fprintf(stderr, "\n\n\n* * * * REPLAYING * * * *\n\n\n");
         {
             bitcoin::mff_analyzer azr;
-            auto mff = open_mff(&azr);
+            auto mff = open_mff(&azr, default_dbpath, false);
             // now rewind and read again
             mff->goto_segment(500000);
             mff->m_current_time = 0;
@@ -520,7 +520,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
         record* rec = &head;
         {
             bitcoin::mff_analyzer azr;
-            auto mff = new_mff(&azr);
+            auto mff = new_mff(&azr, default_dbpath, false);
             tracker t(mff);
             mff->begin_segment(500000);
             uint32_t height = 500000;
@@ -624,7 +624,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
         // fprintf(stderr, "\n\n\n* * * * REPLAYING * * * *\n\n\n");
         {
             bitcoin::mff_analyzer azr;
-            auto mff = open_mff(&azr);
+            auto mff = open_mff(&azr, default_dbpath, false);
             // now rewind and read again
             mff->goto_segment(500000);
             mff->m_current_time = 0;
@@ -641,131 +641,131 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
         for (record* r : rex) delete r;
     }
 
-    SECTION("sequence 4 (500k)") {
-        record head;
-        std::vector<record*> rex;
-        head.records_ptr = &rex;
-        record* rec = &head;
-        {
-            bitcoin::mff_analyzer azr;
-            auto mff = new_mff(&azr);
-            tracker t(mff);
-            mff->begin_segment(500000);
-            uint32_t height = 500000;
-            std::shared_ptr<bitcoin::tx> tx, offender;
-            size_t sz;
-            uint8_t reason;
-            // txs from before recording began
-            size_t pretxs = random_word() % 100;
-            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx();
-            for (size_t i = 0; i < 500000; ++i) {
-                auto action = random_byte() % 9;
-                // fprintf(stderr, ": %s\n", ((const char*[]){"tx in", "tx in", "tx in", "tx in", "tx out", "tx out", "tx invalid", "block confirm", "block reorg"})[action]);
-                switch (action) {
-                case 0: // tx in
-                case 1:
-                case 2:
-                case 3:
-                    // fprintf(stderr, "tx in\n");
-                    tx = make_random_tx();
-                    t += tx;
-                    mff->tx_entered(mff->m_current_time + 1, tx);
-                    REC(record_mempool_in(tx));
-                    break;
-                case 4: // tx out
-                case 5:
-                    // fprintf(stderr, "tx out\n");
-                    if (t.size() == 0) continue;
-                    tx = t.sample();
-                    reason = random_byte() % 6;
-                    mff->tx_left(mff->m_current_time + 1, tx, reason);
-                    t -= tx;
-                    REC(record_mempool_out(tx->m_hash, reason));
-                    break;
-                case 6: // tx invalid
-                    if (t.size() == 0) continue;
-                    // fprintf(stderr, "tx invalid\n");
-                    if (random_byte() & 1) {
-                        // we have an offender
-                        if (t.size() > 1 && (random_byte() & 1)) {
-                            // known offender
-                            offender = t.sample();
-                        } else {
-                            // unknown offender
-                            offender = make_random_tx();
-                        }
-                        tx = t.sample(&offender);
-                    } else {
-                        offender = nullptr;
-                        tx = t.sample();
-                    }
-                    reason = random_byte() % 6;
-                    mff->tx_discarded(mff->m_current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
-                    t -= tx;
-                    if (offender.get()) {
-                        REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, offender->m_hash, reason, true /* todo: offender is always known */));
-                    } else {
-                        REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, reason));
-                    }
-                    break;
-                case 7: // block confirm
-                    // fprintf(stderr, "block confirm (%u)\n", height);
-                    {
-                        auto b = t.mine_block(mff->m_current_time + 1, ++height);
-                        // if (i < 100) fprintf(stderr, "mine block %u\n", height);
-                        REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
-                    }
-                    break;
-                case 8: // block reorged
-                    {
-                        size_t max_reorgs = height - 500000;
-                        if (max_reorgs == 0) continue;
-                        uint8_t b = random_byte();
-                        size_t reorgs = 1;
-                        if (b == 0)      reorgs = 6;
-                        else if (b < 5)  reorgs = 5;
-                        else if (b < 15) reorgs = 4;
-                        else if (b < 40) reorgs = 3;
-                        else if (b < 80) reorgs = 2;
-                        else             reorgs = 1;
-                        if (reorgs > max_reorgs) reorgs = max_reorgs;
-                        // fprintf(stderr, "block reorg (max=%zu, count=%zu)\n", max_reorgs, reorgs);
-                        long timestamp = mff->m_current_time + 1;
-                        for (size_t i = 0; i < reorgs; ++i) {
-                            REC(record_block_unmined(height));
-                            t.unconfirm_tip(timestamp);
-                            --height;
-                        }
-                        // if (i < 100) fprintf(stderr, "reorg down to block %u\n", height);
-                        // reorgs only occur if we are also seeing a better chain, so make reorgs + 1 blocks
-                        for (size_t i = 0; i <= reorgs; ++i) {
-                            auto b = t.mine_block(timestamp, ++height);
-                            REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
-                        }
-                        // if (i < 100) fprintf(stderr, "re-mine to block %u\n", height);
-                        break;
-                    }
-                }
-            }
-            // fprintf(stderr, "final stell() = %s\n", mff->stell().c_str());
-        }
-        // fprintf(stderr, "\n\n\n* * * * REPLAYING * * * *\n\n\n");
-        {
-            bitcoin::mff_analyzer azr;
-            auto mff = open_mff(&azr);
-            // now rewind and read again
-            mff->goto_segment(500000);
-            mff->m_current_time = 0;
-            // replay should be identical to record
-            for (rec = head.m_next; rec; rec = rec->m_next) {
-                // should have another entry, as long as rec is !null
-                bool b = mff->iterate();
-                REQUIRE(b);
-                // fprintf(stderr, "① %s\n", azr.to_string().c_str());
-                // fprintf(stderr, "② %s\n", rec->to_string().c_str());
-                rec->check(&azr);
-            }
-        }
-        for (record* r : rex) delete r;
-    }
+    // SECTION("sequence 4 (500k)") {
+    //     record head;
+    //     std::vector<record*> rex;
+    //     head.records_ptr = &rex;
+    //     record* rec = &head;
+    //     {
+    //         bitcoin::mff_analyzer azr;
+    //         auto mff = new_mff(&azr, default_dbpath, false);
+    //         tracker t(mff);
+    //         mff->begin_segment(500000);
+    //         uint32_t height = 500000;
+    //         std::shared_ptr<bitcoin::tx> tx, offender;
+    //         size_t sz;
+    //         uint8_t reason;
+    //         // txs from before recording began
+    //         size_t pretxs = random_word() % 100;
+    //         for (size_t i = 0; i < pretxs; ++i) t += make_random_tx();
+    //         for (size_t i = 0; i < 500000; ++i) {
+    //             auto action = random_byte() % 9;
+    //             // fprintf(stderr, ": %s\n", ((const char*[]){"tx in", "tx in", "tx in", "tx in", "tx out", "tx out", "tx invalid", "block confirm", "block reorg"})[action]);
+    //             switch (action) {
+    //             case 0: // tx in
+    //             case 1:
+    //             case 2:
+    //             case 3:
+    //                 // fprintf(stderr, "tx in\n");
+    //                 tx = make_random_tx();
+    //                 t += tx;
+    //                 mff->tx_entered(mff->m_current_time + 1, tx);
+    //                 REC(record_mempool_in(tx));
+    //                 break;
+    //             case 4: // tx out
+    //             case 5:
+    //                 // fprintf(stderr, "tx out\n");
+    //                 if (t.size() == 0) continue;
+    //                 tx = t.sample();
+    //                 reason = random_byte() % 6;
+    //                 mff->tx_left(mff->m_current_time + 1, tx, reason);
+    //                 t -= tx;
+    //                 REC(record_mempool_out(tx->m_hash, reason));
+    //                 break;
+    //             case 6: // tx invalid
+    //                 if (t.size() == 0) continue;
+    //                 // fprintf(stderr, "tx invalid\n");
+    //                 if (random_byte() & 1) {
+    //                     // we have an offender
+    //                     if (t.size() > 1 && (random_byte() & 1)) {
+    //                         // known offender
+    //                         offender = t.sample();
+    //                     } else {
+    //                         // unknown offender
+    //                         offender = make_random_tx();
+    //                     }
+    //                     tx = t.sample(&offender);
+    //                 } else {
+    //                     offender = nullptr;
+    //                     tx = t.sample();
+    //                 }
+    //                 reason = random_byte() % 6;
+    //                 mff->tx_discarded(mff->m_current_time + 1, tx, std::vector<uint8_t>{1,2,3}, reason, offender);
+    //                 t -= tx;
+    //                 if (offender.get()) {
+    //                     REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, offender->m_hash, reason, true /* todo: offender is always known */));
+    //                 } else {
+    //                     REC(record_mempool_invalidated(tx->m_hash, std::vector<uint8_t>{1,2,3}, reason));
+    //                 }
+    //                 break;
+    //             case 7: // block confirm
+    //                 // fprintf(stderr, "block confirm (%u)\n", height);
+    //                 {
+    //                     auto b = t.mine_block(mff->m_current_time + 1, ++height);
+    //                     // if (i < 100) fprintf(stderr, "mine block %u\n", height);
+    //                     REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
+    //                 }
+    //                 break;
+    //             case 8: // block reorged
+    //                 {
+    //                     size_t max_reorgs = height - 500000;
+    //                     if (max_reorgs == 0) continue;
+    //                     uint8_t b = random_byte();
+    //                     size_t reorgs = 1;
+    //                     if (b == 0)      reorgs = 6;
+    //                     else if (b < 5)  reorgs = 5;
+    //                     else if (b < 15) reorgs = 4;
+    //                     else if (b < 40) reorgs = 3;
+    //                     else if (b < 80) reorgs = 2;
+    //                     else             reorgs = 1;
+    //                     if (reorgs > max_reorgs) reorgs = max_reorgs;
+    //                     // fprintf(stderr, "block reorg (max=%zu, count=%zu)\n", max_reorgs, reorgs);
+    //                     long timestamp = mff->m_current_time + 1;
+    //                     for (size_t i = 0; i < reorgs; ++i) {
+    //                         REC(record_block_unmined(height));
+    //                         t.unconfirm_tip(timestamp);
+    //                         --height;
+    //                     }
+    //                     // if (i < 100) fprintf(stderr, "reorg down to block %u\n", height);
+    //                     // reorgs only occur if we are also seeing a better chain, so make reorgs + 1 blocks
+    //                     for (size_t i = 0; i <= reorgs; ++i) {
+    //                         auto b = t.mine_block(timestamp, ++height);
+    //                         REC(record_block_mined(b->m_hash, b->m_height, b->m_txids));
+    //                     }
+    //                     // if (i < 100) fprintf(stderr, "re-mine to block %u\n", height);
+    //                     break;
+    //                 }
+    //             }
+    //         }
+    //         // fprintf(stderr, "final stell() = %s\n", mff->stell().c_str());
+    //     }
+    //     // fprintf(stderr, "\n\n\n* * * * REPLAYING * * * *\n\n\n");
+    //     {
+    //         bitcoin::mff_analyzer azr;
+    //         auto mff = open_mff(&azr, default_dbpath, false);
+    //         // now rewind and read again
+    //         mff->goto_segment(500000);
+    //         mff->m_current_time = 0;
+    //         // replay should be identical to record
+    //         for (rec = head.m_next; rec; rec = rec->m_next) {
+    //             // should have another entry, as long as rec is !null
+    //             bool b = mff->iterate();
+    //             REQUIRE(b);
+    //             // fprintf(stderr, "① %s\n", azr.to_string().c_str());
+    //             // fprintf(stderr, "② %s\n", rec->to_string().c_str());
+    //             rec->check(&azr);
+    //         }
+    //     }
+    //     for (record* r : rex) delete r;
+    // }
 }

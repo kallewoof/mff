@@ -125,7 +125,11 @@ aj2bin_LDADD = \
 example_SOURCES = \
 	ajb.h \
 	ajb.cpp \
-	bcq/example.cpp
+    amap.h \
+    amap.cpp \
+	bcq/example.cpp \
+    tinymempool.h \
+    tinymempool.cpp
 example_CPPFLAGS = $(AM_CPPFLAGS)
 example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb

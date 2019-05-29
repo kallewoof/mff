@@ -41,16 +41,17 @@ static inline std::set<std::shared_ptr<bitcoin::tx>> random_txs() {
 static const std::string default_dbpath = "/tmp/cq-bitcoin-mff";
 static const uint256 some_hash = uint256S("0102030405060708090a0b0c0d0e0f1011121314151617181920212223242526");
 
-inline std::shared_ptr<bitcoin::mff> open_mff(bitcoin::mff_delegate* delegate, const std::string& dbpath = default_dbpath, bool reset = false) {
+inline std::shared_ptr<bitcoin::mff> open_mff(bitcoin::mff_delegate* delegate, const std::string& dbpath = default_dbpath, bool enable_reflections = true, bool reset = false) {
     if (reset) cq::rmdir_r(dbpath);
     auto rv = std::make_shared<bitcoin::mff>(dbpath);
     rv->m_delegate = delegate;
     rv->load();
+    if (enable_reflections) rv->enable_reflection(std::make_shared<bitcoin::mff>(dbpath, "mff", 2016, true));
     return rv;
 }
 
-inline std::shared_ptr<bitcoin::mff> new_mff(bitcoin::mff_delegate* delegate, const std::string& dbpath = default_dbpath) {
-    return open_mff(delegate, dbpath, true);
+inline std::shared_ptr<bitcoin::mff> new_mff(bitcoin::mff_delegate* delegate, const std::string& dbpath = default_dbpath, bool enable_reflections = true) {
+    return open_mff(delegate, dbpath, enable_reflections, true);
 }
 
 inline size_t mff_file_count(const std::string& dbpath = default_dbpath) {

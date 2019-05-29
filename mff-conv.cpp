@@ -12,7 +12,7 @@
 #include <tinyrpc.h>
 #include <amap.h>
 
-std::string time_string(int64_t time) {
+inline std::string time_string(int64_t time) {
     char buf[128];
     sprintf(buf, "%s", asctime(gmtime((time_t*)(&time))));
     buf[strlen(buf)-1] = 0; // remove \n

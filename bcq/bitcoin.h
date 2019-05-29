@@ -286,8 +286,8 @@ public:
     chain m_chain;
     mff_delegate* m_delegate;
 
-    mff(const std::string& dbpath, const std::string& prefix = "mff", uint32_t cluster_size = 2016)
-    : chronology<tx>(dbpath, prefix, cluster_size) {
+    mff(const std::string& dbpath, const std::string& prefix = "mff", uint32_t cluster_size = 2016, bool readonly = false)
+    : chronology<tx>(dbpath, prefix, cluster_size, readonly) {
         m_delegate = nullptr;
     }
 
@@ -313,10 +313,12 @@ public:
         *m_file << height;
         m_chain.did_confirm(new block(height, hash, txs));
         if (m_reg.m_tip < height) begin_segment(height);
+        period();
     }
 
     void tx_entered(long timestamp, std::shared_ptr<tx> x) {
         push_event(timestamp, cmd_mempool_in, x, false /* do not refer -- record entire object, not its hash, if unknown */);
+        period();
     }
 
     void tx_left(long timestamp, std::shared_ptr<tx> x, uint8_t reason, std::shared_ptr<tx> offender = nullptr) {
@@ -325,6 +327,7 @@ public:
         push_event(timestamp, cmd, x);
         *m_file << reason;
         OBREF(offender_known, offender);
+        period();
     }
 
     void tx_discarded(long timestamp, std::shared_ptr<tx> x, const std::vector<uint8_t>& rawtx, uint8_t reason, std::shared_ptr<tx> offender = nullptr) {
@@ -334,6 +337,7 @@ public:
         *m_file << reason;
         OBREF(offender_known, offender);
         *m_file << rawtx;
+        period();
     }
 
     //////////////////////////////////////////////////////////////////////////////////////
@@ -343,7 +347,6 @@ public:
     inline bool iterate() { return registry_iterate(m_file); }
 
     bool registry_iterate(cq::file* file) override {
-        // assert: m_delegate non-null; if null, this method will crash
         uint8_t cmd;
         bool known;
         auto pos = m_file->tell();
@@ -359,9 +362,10 @@ public:
             if (known) {
                 auto ref = pop_reference();
                 const uint256& txid = m_dictionary.at(ref)->m_hash;
-                m_delegate->receive_transaction_with_txid(txid);
+                if (m_delegate) m_delegate->receive_transaction_with_txid(txid);
             } else {
-                m_delegate->receive_transaction(pop_object());
+                auto o = pop_object();
+                if (m_delegate) m_delegate->receive_transaction(o);
             }
         } break;
 
@@ -377,7 +381,7 @@ public:
                 offender_hash_rv = FERBO(offender_known, offender_hash_rv);
                 // offender_hash = &offender_hash_rv;
             }
-            m_delegate->forget_transaction_with_txid(txid, reason);
+            if (m_delegate) m_delegate->forget_transaction_with_txid(txid, reason);
         } break;
 
         case cmd_mempool_invalidated: {
@@ -394,7 +398,7 @@ public:
                 offender_hash = &offender_hash_rv;
             }
             *m_file >> rawtx;
-            m_delegate->discard_transaction_with_txid(txid, rawtx, reason, offender_hash);
+            if (m_delegate) m_delegate->discard_transaction_with_txid(txid, rawtx, reason, offender_hash);
         } break;
 
         case cmd_block_mined: {
@@ -408,7 +412,7 @@ public:
             block* b = new block(height, hash, tx_hashes);
             m_chain.did_confirm(b);
             // fprintf(stderr, "- %ld: mined %u [%zu]\n", pos, height, m_chain.get_blocks().size());
-            m_delegate->block_confirmed(*b);
+            if (m_delegate) m_delegate->block_confirmed(*b);
         } break;
 
         case cmd_block_unmined: {
@@ -419,7 +423,7 @@ public:
             // the assert below is not valid in cases where the reorg'd block is before the recording began
             // assert(unmined_height == m_chain.m_tip);
             m_chain.pop_tip();
-            m_delegate->block_reorged(unmined_height);
+            if (m_delegate) m_delegate->block_reorged(unmined_height);
         } break;
 
         default:

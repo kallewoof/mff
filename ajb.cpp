@@ -1,4 +1,5 @@
 #include <amap.h>
+#include <tinyrpc.h>
 
 #include <ajb.h>
 
