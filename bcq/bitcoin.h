@@ -316,12 +316,12 @@ public:
         *m_file << height;
         m_chain.did_confirm(new block(height, hash, txs));
         if (m_reg.m_tip < height) begin_segment(height);
-        period();
+        CHRON_DOT(this);
     }
 
     void tx_entered(long timestamp, std::shared_ptr<tx> x) {
         push_event(timestamp, cmd_mempool_in, x, false /* do not refer -- record entire object, not its hash, if unknown */);
-        period();
+        CHRON_DOT(this);
     }
 
     void tx_left(long timestamp, std::shared_ptr<tx> x, uint8_t reason, std::shared_ptr<tx> offender = nullptr) {
@@ -330,7 +330,7 @@ public:
         push_event(timestamp, cmd, x);
         *m_file << reason;
         OBREF(offender_known, offender);
-        period();
+        CHRON_DOT(this);
     }
 
     void tx_discarded(long timestamp, std::shared_ptr<tx> x, const std::vector<uint8_t>& rawtx, uint8_t reason, std::shared_ptr<tx> offender = nullptr) {
@@ -340,7 +340,7 @@ public:
         *m_file << reason;
         OBREF(offender_known, offender);
         *m_file << rawtx;
-        period();
+        CHRON_DOT(this);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////

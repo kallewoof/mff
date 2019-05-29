@@ -46,7 +46,7 @@ inline std::shared_ptr<bitcoin::mff> open_mff(bitcoin::mff_delegate* delegate, c
     auto rv = std::make_shared<bitcoin::mff>(dbpath);
     rv->m_delegate = delegate;
     rv->load();
-    if (enable_reflections) rv->enable_reflection(std::make_shared<bitcoin::mff>(dbpath, "mff", 2016, true));
+    if (enable_reflections) CHRON_SET_REFLECTION(rv, std::make_shared<bitcoin::mff>(dbpath, "mff", 2016, true));
     return rv;
 }
 

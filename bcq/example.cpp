@@ -28,7 +28,7 @@ int main(int argc, const char** argv) {
         bitcoin::load_mempool(mempool, std::string(argv[1]) + "/mempool.tmp");
     }
     if (!mff->m_file) mff->begin_segment(0);
-    mff->enable_reflection(std::make_shared<bitcoin::mff>(argv[1], "example", 2016, true));
+    CHRON_SET_REFLECTION(mff, std::make_shared<bitcoin::mff>(argv[1], "example", 2016, true));
 
     // ajb is the source ("AJ binary"); it slightly depends on the MFF object for seeing if items are
     // known beforehand or not, but this is only an optimization
