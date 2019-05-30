@@ -288,6 +288,7 @@ public:
     static const uint8_t reason_conflict = 0x04;
     static const uint8_t reason_replaced = 0x05;
 
+    uint64_t m_entries{0};
     chain m_chain;
     mff_delegate* m_delegate;
 
@@ -309,6 +310,7 @@ public:
     }
 
     void confirm_block(long timestamp, uint32_t height, const uint256& hash, const std::set<std::shared_ptr<tx>>& txs) {
+        ++m_entries;
         if (m_reg.m_tip < height - 1) begin_segment(height - 1);
         while (m_chain.m_tip && m_chain.m_tip >= height) unconfirm_tip(timestamp);
         // note: this does not deal with invalidating txs which are double spends; that has to be handled
@@ -322,11 +324,13 @@ public:
     }
 
     void tx_entered(long timestamp, std::shared_ptr<tx> x) {
+        ++m_entries;
         push_event(timestamp, cmd_mempool_in, x, false /* do not refer -- record entire object, not its hash, if unknown */);
         CHRON_DOT(this);
     }
 
     void tx_left(long timestamp, std::shared_ptr<tx> x, uint8_t reason, std::shared_ptr<tx> offender = nullptr) {
+        ++m_entries;
         bool offender_known = offender.get() && m_references.count(offender->m_hash);
         uint8_t cmd = cmd_mempool_out | (offender.get() ? cmd_flag_offender_present : 0) | (offender_known ? cmd_flag_offender_known : 0);
         push_event(timestamp, cmd, x);
@@ -336,6 +340,7 @@ public:
     }
 
     void tx_discarded(long timestamp, std::shared_ptr<tx> x, const std::vector<uint8_t>& rawtx, uint8_t reason, std::shared_ptr<tx> offender = nullptr) {
+        ++m_entries;
         bool offender_known = offender.get() && m_references.count(offender->m_hash);
         uint8_t cmd = cmd_mempool_invalidated | (offender.get() ? cmd_flag_offender_present : 0) | (offender_known ? cmd_flag_offender_known : 0);
         push_event(timestamp, cmd, x);
@@ -352,10 +357,6 @@ public:
     inline bool iterate() { return registry_iterate(m_file); }
 
     bool registry_iterate(cq::file* file) override {
-        static int bollhav = 0; bollhav++;
-        if (bollhav == 90364) {
-            fprintf(stderr, "bollhav!\n");
-        }
         uint8_t cmd;
         bool known;
         auto pos = m_file->tell();

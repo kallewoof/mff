@@ -35,7 +35,6 @@ struct ajb {
     int64_t get_tx_input_amount(tiny::tx& tx);
 
     bool read_entry();
-    int64_t peek_time();
     long tell() { return ftell(in_fp); }
     void flush() { fflush(in_fp); }
 

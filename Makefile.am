@@ -63,8 +63,12 @@ libmff_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 # CQ library (which uses libbcqdb) #
 
 libbcq_a_SOURCES = \
+    amap.h \
+    amap.cpp \
 	bcq/bitcoin.cpp \
-	bcq/bitcoin.h
+	bcq/bitcoin.h \
+    tinymempool.h \
+    tinymempool.cpp
 libbcq_a_CPPFLAGS = $(AM_CPPFLAGS)
 libbcq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 bcqdbincludedir = $(includedir)/bcq
@@ -125,11 +129,7 @@ aj2bin_LDADD = \
 example_SOURCES = \
 	ajb.h \
 	ajb.cpp \
-    amap.h \
-    amap.cpp \
-	bcq/example.cpp \
-    tinymempool.h \
-    tinymempool.cpp
+	bcq/example.cpp
 example_CPPFLAGS = $(AM_CPPFLAGS)
 example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
@@ -151,15 +151,11 @@ example_findtx_LDADD = \
 
 # test-mff binary #
 test_mff_SOURCES = \
-    amap.h \
-    amap.cpp \
 	test/catch.hpp \
 	test/helpers.h \
 	test/test-cq-bitcoin.cpp \
 	test/test-cqb-primitives.cpp \
-	test/test-mff.cpp \
-	tinymempool.h \
-	tinymempool.cpp
+	test/test-mff.cpp
 test_mff_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 test_mff_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 test_mff_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb

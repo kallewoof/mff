@@ -45,6 +45,10 @@ int main(int argc, const char** argv) {
     long in_bytes = cq::fsize(argv[2]);
     size_t entries = 0;
     while (a.read_entry()) {
+        if (a.current_time < 1500000000) { fprintf(stderr, "a.current_time is too low\n"); assert(0); }
+        if (a.current_time > 1559201453) { fprintf(stderr, "a.current_time is too high\n"); assert(0); }
+        // if (mff->m_current_time < 1500000000) { fprintf(stderr, "mff.current_time is too low\n"); assert(0); }
+        if (mff->m_current_time > 1559201453) { fprintf(stderr, "mff.current_time is too high\n"); assert(0); }
         if (!internal_start_time) {
             internal_start_time = a.current_time;
         }
@@ -55,7 +59,8 @@ int main(int argc, const char** argv) {
             long pos = ftell(a.in_fp);
             long pos2 = mff->m_file->tell();
             float done = 100.f * pos / in_bytes;
-            printf(" [%5.2f%%] %zu %ld -> %ld : %s <cluster=%" PRIid " block=%u>     \r", done, entries, pos, pos2, time_string(a.current_time).c_str(), cluster, block_height);
+            auto ts = time_string(a.current_time);
+            printf(" [%5.2f%%] %zu [%zu] %ld -> %ld : %s <cluster=%" PRIid " block=%u>     \r", done, entries, mff->m_entries, pos, pos2, ts.c_str(), cluster, block_height);
             fflush(stdout);
         }
     }

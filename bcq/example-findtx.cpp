@@ -101,7 +101,6 @@ int main(int argc, const char** argv) {
             }
             fputc('\n', stdout);
         }
-        static int apboll = 0; apboll++; if (apboll > 100000) break;
     }
     int64_t recorded_end_time = f.m_current_time;
     int64_t end_time = GetTime();
