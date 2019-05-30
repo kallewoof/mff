@@ -18,6 +18,8 @@ struct ajb {
     std::shared_ptr<tiny::mempool> mempool;
 
     long current_time;
+    long next_block_time{0};
+    uint256 next_block;
 
     FILE* in_fp;
     CAutoFile in;
@@ -33,6 +35,8 @@ struct ajb {
     // RPC/AMAP combinator
     int64_t get_output_value(const uint256& txid, int n);
     int64_t get_tx_input_amount(tiny::tx& tx);
+
+    bool process_block_hash(const uint256& blockhash);
 
     bool read_entry();
     long tell() { return ftell(in_fp); }

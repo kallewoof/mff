@@ -64,10 +64,8 @@ int main(int argc, const char** argv) {
             fflush(stdout);
         }
     }
-    printf("\nwriting mempool ...");
-    fflush(stdout);
+    printf("\n");
     bitcoin::save_mempool(mempool, std::string(argv[1]) + "/mempool.tmp");
-    printf("done\n");
 }
 
 tiny::rpc* rpc = nullptr;

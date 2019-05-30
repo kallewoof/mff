@@ -30,9 +30,12 @@ int main(int argc, const char** argv) {
 
     // rewind to the beginning
     f.rewind();
+    // f.goto_segment(546336);
 
     // start iterating through; if we encounter the transaction, show info about it
     long internal_start_time = 0;
+    uint32_t first_block = 0;
+    uint32_t last_block = 0;
     uint64_t entries = 0;
     int64_t start_time = GetTime();
     std::set<uint256> touched_txids;
@@ -41,6 +44,7 @@ int main(int argc, const char** argv) {
             internal_start_time = f.m_current_time;
             printf("%s: ----log begins----\n", time_string(internal_start_time).c_str());
         }
+        if (!first_block) first_block = f.m_chain.m_tip;
         entries++;
         if (!(entries % 100)) {
             cq::id cluster = mff->get_registry().m_current_cluster;
@@ -95,13 +99,13 @@ int main(int argc, const char** argv) {
                     // re-entry
                     printf(" (%s)", txid_str(azr.last_txids.back()).c_str());
                 }
-                break;
             } else if (azr.last_command == bitcoin::mff::cmd_block_mined) {
-                printf(" (%s in #%u%s)", txid_str(txid).c_str(), mff->m_chain.m_tip, mff->m_chain.get_blocks().size() > 0 ? mff->m_chain.get_blocks().back()->m_hash.ToString().c_str() : "???");
+                printf(" (%s in #%u=%s)", txid_str(txid).c_str(), mff->m_chain.m_tip, mff->m_chain.get_blocks().size() > 0 ? mff->m_chain.get_blocks().back()->m_hash.ToString().c_str() : "???");
             }
             fputc('\n', stdout);
         }
     }
+    last_block = f.m_chain.m_tip;
     int64_t recorded_end_time = f.m_current_time;
     int64_t end_time = GetTime();
     printf("%s: ----log ends----\n", time_string(recorded_end_time).c_str());
@@ -109,9 +113,10 @@ int main(int argc, const char** argv) {
     int64_t htotal = elapsed / 3600;
     int64_t days = elapsed / 86400;
     int64_t hours = (elapsed % 86400) / 3600;
-    printf("start = %ld (%lld)\n"
-           "end   = %lld (%lld)\n", internal_start_time, start_time, recorded_end_time, end_time);
-    printf("%" PRIu64 " entries over %" PRIi64 " days, %" PRIi64 " hours parsed in %" PRIi64 " seconds (%" PRIi64 " entries/s, or %" PRIi64 " hours/real second)\n", entries, days, hours, end_time - start_time, entries / (end_time - start_time), htotal / (end_time - start_time));
+    uint32_t blocks = 1 + last_block - first_block;
+    printf("start = %ld (%lld) [height %u]\n"
+           "end   = %lld (%lld) [height %u]\n", internal_start_time, start_time, first_block, recorded_end_time, end_time, last_block);
+    printf("%" PRIu64 " entries over %" PRIi64 " days, %" PRIi64 " hours (%u blocks) parsed in %" PRIi64 " seconds (%" PRIi64 " entries/s, or %" PRIi64 " hours/real second, or %u blocks/minute)\n", entries, days, hours, blocks, end_time - start_time, entries / (end_time - start_time), htotal / (end_time - start_time), blocks * 60 / (end_time - start_time));
 
     uint64_t total = azr.total_bytes;
     uint64_t counted = total;
