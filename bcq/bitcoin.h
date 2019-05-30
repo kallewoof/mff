@@ -264,6 +264,8 @@ public:
      */
     virtual void block_reorged(uint32_t height) =0;
     virtual std::string to_string() const =0;
+
+    virtual void iterated(long starting_pos, long resulting_pos) =0;
 };
 
 class mff : public cq::chronology<tx> {
@@ -350,107 +352,133 @@ public:
     inline bool iterate() { return registry_iterate(m_file); }
 
     bool registry_iterate(cq::file* file) override {
+        static int bollhav = 0; bollhav++;
+        if (bollhav == 90364) {
+            fprintf(stderr, "bollhav!\n");
+        }
         uint8_t cmd;
         bool known;
         auto pos = m_file->tell();
+        std::string f = m_file->get_path();
         if (!pop_event(cmd, known)) return false;
+        if (m_current_time > 1600000000) {
+            fprintf(stderr, "invalid time!\n");
+            assert(0);
+        }
+        if (f != m_file->get_path()) { pos = m_file->tell() - 1; }
         uint8_t no_offender_cmd = cmd & 0x07;
 
         std::shared_ptr<tx> x = std::make_shared<tx>();
 
-        switch (no_offender_cmd) {
-        case cmd_time_set: break; // nothing needs to be done; the time update has already happened
+        try {
+            switch (no_offender_cmd) {
+            case cmd_time_set: break; // nothing needs to be done; the time update has already happened
 
-        case cmd_mempool_in: {
-            if (known) {
-                auto ref = pop_reference();
-                const uint256& txid = m_dictionary.at(ref)->m_hash;
-                if (m_delegate) m_delegate->receive_transaction_with_txid(txid);
-            } else {
-                auto o = pop_object();
-                if (m_delegate) m_delegate->receive_transaction(o);
+            case cmd_mempool_in: {
+                if (known) {
+                    auto ref = pop_reference();
+                    const uint256& txid = m_dictionary.at(ref)->m_hash;
+                    if (m_delegate) m_delegate->receive_transaction_with_txid(txid);
+                } else {
+                    auto o = pop_object();
+                    if (m_delegate) m_delegate->receive_transaction(o);
+                }
+            } break;
+
+            case cmd_mempool_out: {
+                bool offender_present = (cmd & cmd_flag_offender_present) > 0;
+                bool offender_known = (cmd & cmd_flag_offender_known) > 0;
+                uint256 txid = FERBO(known, txid);
+                uint8_t reason;
+                *m_file >> reason;
+                // uint256* offender_hash = nullptr;
+                uint256 offender_hash_rv;
+                if (offender_present) {
+                    offender_hash_rv = FERBO(offender_known, offender_hash_rv);
+                    // offender_hash = &offender_hash_rv;
+                }
+                if (m_delegate) m_delegate->forget_transaction_with_txid(txid, reason);
+            } break;
+
+            case cmd_mempool_invalidated: {
+                bool offender_present = (cmd & cmd_flag_offender_present) > 0;
+                bool offender_known = (cmd & cmd_flag_offender_known) > 0;
+                uint256 txid = FERBO(known, txid);
+                uint8_t reason;
+                std::vector<uint8_t> rawtx;
+                *m_file >> reason;
+                uint256* offender_hash = nullptr;
+                uint256 offender_hash_rv;
+                if (offender_present) {
+                    offender_hash_rv = FERBO(offender_known, offender_hash_rv);
+                    offender_hash = &offender_hash_rv;
+                }
+                *m_file >> rawtx;
+                if (m_delegate) m_delegate->discard_transaction_with_txid(txid, rawtx, reason, offender_hash);
+            } break;
+
+            case cmd_block_mined: {
+                uint256 hash;
+                auto pos = m_file->tell();
+                uint32_t height;
+                std::set<uint256> tx_hashes;
+                pop_reference_hashes(tx_hashes);
+                hash.Unserialize(*m_file);
+                *m_file >> height;
+                block* b = new block(height, hash, tx_hashes);
+                m_chain.did_confirm(b);
+                // fprintf(stderr, "- %ld: mined %u [%zu]\n", pos, height, m_chain.get_blocks().size());
+                if (m_delegate) m_delegate->block_confirmed(*b);
+            } break;
+
+            case cmd_block_unmined: {
+                uint32_t unmined_height;
+                auto pos = m_file->tell();
+                *m_file >> unmined_height;
+                // fprintf(stderr, "- %ld: unmining %u [%zu]\n", pos, unmined_height, m_chain.get_blocks().size());
+                // the assert below is not valid in cases where the reorg'd block is before the recording began
+                // assert(unmined_height == m_chain.m_tip);
+                m_chain.pop_tip();
+                if (m_delegate) m_delegate->block_reorged(unmined_height);
+            } break;
+
+            default:
+                fprintf(stderr, "invalid command: %02x\n", no_offender_cmd);
+                throw std::runtime_error("invalid command");
             }
-        } break;
-
-        case cmd_mempool_out: {
-            bool offender_present = (cmd & cmd_flag_offender_present) > 0;
-            bool offender_known = (cmd & cmd_flag_offender_known) > 0;
-            uint256 txid = FERBO(known, txid);
-            uint8_t reason;
-            *m_file >> reason;
-            // uint256* offender_hash = nullptr;
-            uint256 offender_hash_rv;
-            if (offender_present) {
-                offender_hash_rv = FERBO(offender_known, offender_hash_rv);
-                // offender_hash = &offender_hash_rv;
+        } catch (const cq::io_error& err) {
+            if (m_readonly) {
+                // for readonly mode, we don't mind if the last entry is broken, as it may be written to
+                // so we just return false here
+                return false;
             }
-            if (m_delegate) m_delegate->forget_transaction_with_txid(txid, reason);
-        } break;
-
-        case cmd_mempool_invalidated: {
-            bool offender_present = (cmd & cmd_flag_offender_present) > 0;
-            bool offender_known = (cmd & cmd_flag_offender_known) > 0;
-            uint256 txid = FERBO(known, txid);
-            uint8_t reason;
-            std::vector<uint8_t> rawtx;
-            *m_file >> reason;
-            uint256* offender_hash = nullptr;
-            uint256 offender_hash_rv;
-            if (offender_present) {
-                offender_hash_rv = FERBO(offender_known, offender_hash_rv);
-                offender_hash = &offender_hash_rv;
-            }
-            *m_file >> rawtx;
-            if (m_delegate) m_delegate->discard_transaction_with_txid(txid, rawtx, reason, offender_hash);
-        } break;
-
-        case cmd_block_mined: {
-            uint256 hash;
-            auto pos = m_file->tell();
-            uint32_t height;
-            std::set<uint256> tx_hashes;
-            pop_reference_hashes(tx_hashes);
-            hash.Unserialize(*m_file);
-            *m_file >> height;
-            block* b = new block(height, hash, tx_hashes);
-            m_chain.did_confirm(b);
-            // fprintf(stderr, "- %ld: mined %u [%zu]\n", pos, height, m_chain.get_blocks().size());
-            if (m_delegate) m_delegate->block_confirmed(*b);
-        } break;
-
-        case cmd_block_unmined: {
-            uint32_t unmined_height;
-            auto pos = m_file->tell();
-            *m_file >> unmined_height;
-            // fprintf(stderr, "- %ld: unmining %u [%zu]\n", pos, unmined_height, m_chain.get_blocks().size());
-            // the assert below is not valid in cases where the reorg'd block is before the recording began
-            // assert(unmined_height == m_chain.m_tip);
-            m_chain.pop_tip();
-            if (m_delegate) m_delegate->block_reorged(unmined_height);
-        } break;
-
-        default:
-            fprintf(stderr, "invalid command: %02x\n", no_offender_cmd);
-            throw std::runtime_error("invalid command");
+            // if readwrite mode, though, we want to die
+            throw err;
         }
+        assert(pos < m_file->tell());
+        if (m_delegate) m_delegate->iterated(pos, m_file->tell());
         return true;
     }
 };
 
-inline std::string reason_string(uint8_t reason) {
-    switch (reason) {
-        case mff::reason_unknown: return "unknown";
-        case mff::reason_expired: return "expired";
-        case mff::reason_sizelimit: return "sizelimit";
-        case mff::reason_reorg: return "reorg";
-        case mff::reason_conflict: return "conflict";
-        case mff::reason_replaced: return "replaced";
-        default: return "???????????????????";
-    }
+static const std::string reasons[] = {"unknown", "expired", "sizelimit", "reorg", "conflict", "replaced", "???????????????????"};
+inline const std::string& reason_string(uint8_t reason) {
+    return reasons[reason < 6 ? reason : 6];
+}
+
+static const std::string cmds[] = {"time_set", "mempool_in", "mempool_out", "mempool_invalidated", "block_mined", "block_unmined", "?????????????????????"};
+inline const std::string& cmd_string(uint8_t cmd) {
+    cmd &= 0x07;
+    return cmds[cmd < 6 ? cmd : 6];
 }
 
 class mff_analyzer : public mff_delegate {
 public:
+    uint64_t total_bytes{0};
+    uint64_t total_txrecs{0};
+    uint64_t total_txrec_bytes{0};
+    std::map<uint8_t,size_t> usage;
+    std::map<uint8_t,size_t> count;
     std::vector<uint256> last_txids;
     std::vector<std::shared_ptr<tx>> last_txs;
     std::vector<uint8_t> last_rawtx;
@@ -471,6 +499,11 @@ public:
     virtual void block_reorged(uint32_t height) override;
 
     virtual std::string to_string() const override;
+
+    virtual void iterated(long starting_pos, long resulting_pos) override;
+
+    void populate_touched_txids(std::set<uint256>& txids) const;
+
 };
 
 

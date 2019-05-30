@@ -18,7 +18,7 @@ EXTRA_LIBRARIES += \
   $(LIBBCQ)
 
 bin_PROGRAMS = mff-reader mff-conv aj2bin
-noinst_PROGRAMS = example test-mff
+noinst_PROGRAMS = example example-findtx test-mff
 lib_LIBRARIES = libbcq.a
 
 .PHONY: FORCE check-symbols check-security
@@ -135,6 +135,17 @@ example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
 example_LDADD = \
+	$(LIBBCQ) \
+	$(LIBBITCOIN)
+
+# example-findtx binary #
+example_findtx_SOURCES = \
+	bcq/example-findtx.cpp
+example_findtx_CPPFLAGS = $(AM_CPPFLAGS)
+example_findtx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
+example_findtx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
+
+example_findtx_LDADD = \
 	$(LIBBCQ) \
 	$(LIBBITCOIN)
 

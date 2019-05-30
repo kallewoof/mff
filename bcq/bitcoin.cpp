@@ -138,6 +138,25 @@ std::string mff_analyzer::to_string() const {
     }
 }
 
+void mff_analyzer::iterated(long starting_pos, long resulting_pos) {
+    count[last_command]++;
+    long used = resulting_pos - starting_pos;
+    total_bytes += used;
+    usage[last_command] += used;
+    if (last_command == mff::cmd_mempool_in && last_txs.size()) {
+        total_txrecs++;
+        total_txrec_bytes += used;
+    }
+}
+
+void mff_analyzer::populate_touched_txids(std::set<uint256>& txids) const {
+    txids.clear();
+    txids.insert(last_txids.begin(), last_txids.end());
+    for (const auto& tx : last_txs) txids.insert(tx->m_hash);
+    if (!last_cause.IsNull()) txids.insert(last_cause);
+    if (last_mined_block) txids.insert(last_mined_block->m_txids.begin(), last_mined_block->m_txids.end());
+}
+
 void mff_mempool_callback::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
     const auto& tref = entry->x;
     auto ex = m_mff->tretch(tref->hash);
