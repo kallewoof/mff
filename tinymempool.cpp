@@ -46,13 +46,14 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
 
     // create new entry
     std::shared_ptr<const mempool_entry> entry = std::make_shared<const mempool_entry>(x, in_sum, unknown_inputs);
-    entry_map[x->hash] = entry;
 
     // min feerate check
     if (!retain && entry->feerate() < min_feerate) {
         // this tx has too low fee so we won't let it in, nor will we evict conflicting txs
         return;
     }
+
+    entry_map[x->hash] = entry;
 
     // find and evict transactions that conflict with x
     std::set<std::shared_ptr<const mempool_entry>> evictees;
