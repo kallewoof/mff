@@ -194,6 +194,27 @@ public:
     ~chain() {
         for (block* b : m_blocks) delete b;
     }
+    const block* get_block_for_height(uint32_t height) {
+        if (m_tip < height) return nullptr;
+        if (m_tip - height >= m_blocks.size()) return nullptr;
+        block* b = m_blocks.at(m_tip - height);
+        if (b->m_height == height) return b;
+        // fallback to linlog
+        bool toohigh = b->m_height > height;
+        size_t m = m_tip - height;
+        size_t l = toohigh ? 0 : m + 1;
+        size_t r = toohigh ? m : m_blocks.size();
+        while (r > l) {
+            m = l + ((r - l) >> 1);
+            b = m_blocks.at(m);
+            if (b->m_height > height) {
+                r = m;
+            } else if (b->m_height < height) {
+                l = m + 1;
+            } else return b;
+        }
+        return nullptr;
+    }
     const std::vector<block*>& get_blocks() const { return m_blocks; }
     uint32_t m_tip{0};
     void did_confirm(block* blk) {
