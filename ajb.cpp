@@ -88,25 +88,28 @@ bool ajb::process_block_hash(const uint256& blockhash) {
     tiny::block blk;
     uint32_t height;
     if (rpc->get_block(blockhash, blk, height)) {
-        // fill in gaps in case this is not the next block
-        uint32_t expected_block_height = mff->get_height() == 0 ? height : mff->get_height() + 1;
-        if (expected_block_height && expected_block_height < height) {
-            printf("expected block height %u, got block at height %u\n", expected_block_height, height);
-            for (uint32_t i = expected_block_height; i < height; ++i) {
-                printf("filling gap (height=%u)\n", i);
-                tiny::block blk2;
-                uint256 blockhash2;
-                rpc->get_block(i, blk2, blockhash2);
-                confirm(i, blockhash2, blk2);
+        // if this is the current block, we ignore
+        if (mff->m_chain.get_blocks().size() && mff->m_chain.get_blocks().back()->m_hash != blockhash) {
+            // fill in gaps in case this is not the next block
+            uint32_t expected_block_height = mff->get_height() == 0 ? height : mff->get_height() + 1;
+            if (expected_block_height && expected_block_height < height) {
+                printf("expected block height %u, got block at height %u\n", expected_block_height, height);
+                for (uint32_t i = expected_block_height; i < height; ++i) {
+                    printf("filling gap (height=%u)\n", i);
+                    tiny::block blk2;
+                    uint256 blockhash2;
+                    rpc->get_block(i, blk2, blockhash2);
+                    confirm(i, blockhash2, blk2);
+                }
             }
-        }
-        confirm(height, blockhash, blk);
-        if (update_next) {
-            // determine the time/hash of the next block, if any
-            if (rpc->get_block(height+1, blk, next_block)) {
-                next_block_time = blk.time;
-            } else {
-                next_block_time = 0;
+            confirm(height, blockhash, blk);
+            if (update_next) {
+                // determine the time/hash of the next block, if any
+                if (rpc->get_block(height+1, blk, next_block)) {
+                    next_block_time = blk.time;
+                } else {
+                    next_block_time = 0;
+                }
             }
         }
     }

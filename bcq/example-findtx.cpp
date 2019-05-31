@@ -5,17 +5,28 @@
 
 #include <bcq/bitcoin.h>
 
-inline std::string time_string(int64_t time);
+inline char* time_string(int64_t time);
+inline char* size_string(long size);
 
 bool txid_in_vtx(const uint256& txid, const std::vector<std::shared_ptr<bitcoin::tx>>& vtx);
 
 std::string txid_str(const uint256& txid) { return txid.ToString(); }
+void parse_range(const char* expr, uint32_t& block_start, uint32_t& block_end, int64_t& time_start, int64_t& time_end);
 
 int main(int argc, const char** argv) {
-    if (argc < 3) {
-        fprintf(stderr, "syntax: %s <db path> <txid>\n", argv[0]);
+    if (argc < 3 || argc > 4) {
+        fprintf(stderr, "syntax: %s <db path> <txid> [blocks=<block-range>] [period=<time-range>]\n", argv[0]);
         return 1;
     }
+
+    uint32_t block_start = 0;
+    uint32_t block_end = -1;
+    int64_t time_start = 0;
+    int64_t time_end = 0xffffffffffffff;
+
+    const auto& dbpath = argv[1];
+    const auto& txidstr = argv[2];
+    if (argc > 3) parse_range(argv[3], block_start, block_end, time_start, time_end);
 
     const uint256 txid = uint256S(argv[2]);
 
@@ -28,8 +39,18 @@ int main(int argc, const char** argv) {
     bitcoin::mff_analyzer azr;
     mff->m_delegate = &azr;
 
-    // rewind to the beginning
-    f.rewind();
+    if (block_start == 0 && time_start == 0) {
+        // rewind to the beginning
+        f.rewind();
+    } else if (block_start) {
+        // go to block cluster
+        uint32_t starting_block = (block_start / 2016) * 2016;
+        f.goto_segment(starting_block);
+    } else {
+        // go to time
+        fprintf(stderr, "time range not yet implemented but it'll be great; in the meantime, using starting time 0 (end time is supported)\n");
+        exit(1);
+    }
     // f.goto_segment(546336);
 
     // start iterating through; if we encounter the transaction, show info about it
@@ -40,23 +61,25 @@ int main(int argc, const char** argv) {
     int64_t start_time = GetTime();
     std::set<uint256> touched_txids;
     while (f.iterate()) {
+        if (block_end && f.m_chain.m_tip > block_end) break;
+        if (time_end && f.m_current_time > time_end) break;
         if (!internal_start_time) {
             internal_start_time = f.m_current_time;
-            printf("%s: ----log begins----\n", time_string(internal_start_time).c_str());
+            printf("%s: ----log begins----\n", time_string(internal_start_time));
         }
         if (!first_block) first_block = f.m_chain.m_tip;
         entries++;
-        if (!(entries % 100)) {
+        if (!(entries % 1000)) {
             cq::id cluster = mff->get_registry().m_current_cluster;
             uint32_t block_height = mff->m_chain.m_tip;
             long pos2 = mff->m_file->tell();
-            printf(" %llu %ld : %s <cluster=%" PRIid " block=%u>     \r", entries, pos2, time_string(mff->m_current_time).c_str(), cluster, block_height);
+            printf(" %sE %sB : %s <cluster=%" PRIid " block=%u>     \r", size_string(entries), size_string(pos2), time_string(mff->m_current_time), cluster, block_height);
             fflush(stdout);
         }
 
         azr.populate_touched_txids(touched_txids);
         if (touched_txids.count(txid)) {
-            printf("%s: %s", time_string(mff->m_current_time).c_str(), bitcoin::cmd_string(azr.last_command).c_str());
+            printf("%s: %s", time_string(mff->m_current_time), bitcoin::cmd_string(azr.last_command).c_str());
             if (azr.last_command == bitcoin::mff::cmd_mempool_invalidated) {
                 printf(" %s (%s)", txid_str(azr.last_txids.back()).c_str(), bitcoin::reason_string(azr.last_reason).c_str());
                 if (!azr.last_cause.IsNull()) {
@@ -90,7 +113,7 @@ int main(int argc, const char** argv) {
                     //     extra = " (?)";
                     //     // printf(" (???: ");
                     // }
-                    printf(" (first seen %s%s - %" PRIu64 " vbytes, %" PRIu64 " fee, %.3lf fee rate (s/vbyte), block #%u)\n", txid_str(t->m_hash).c_str(), extra.c_str(), t->vsize(), t->m_fee, t->feerate(), mff->m_chain.m_tip);
+                    printf(" (first seen %s%s - %" PRIu64 " vbytes, %" PRIu64 " fee, %.3lf fee rate (sat/sipa), block #%u)\n", txid_str(t->m_hash).c_str(), extra.c_str(), t->vsize(), t->m_fee, t->feerate(), mff->m_chain.m_tip);
                     // const mff::tx& t = *azr.txs[azr.seqs[txid]];
                     // printf(" (txid seq=%" PRIu64 ") %s", azr.seqs[txid], t->to_string().c_str());
                     // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %" PRIu64 " = %s", x.get_seq(), azr.txs[x.get_seq()]->id.ToString().c_str());
@@ -108,7 +131,7 @@ int main(int argc, const char** argv) {
     last_block = f.m_chain.m_tip;
     int64_t recorded_end_time = f.m_current_time;
     int64_t end_time = GetTime();
-    printf("%s: ----log ends----\n", time_string(recorded_end_time).c_str());
+    printf("%s: ----log ends----\n", time_string(recorded_end_time));
     int64_t elapsed = recorded_end_time - internal_start_time;
     int64_t htotal = elapsed / 3600;
     int64_t days = elapsed / 86400;
@@ -138,14 +161,45 @@ int main(int argc, const char** argv) {
     printf("unaccounted: %10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
 }
 
-inline std::string time_string(int64_t time) {
-    char buf[128];
+inline char* time_string(int64_t time) {
+    static char buf[128];
     sprintf(buf, "%s", asctime(gmtime((time_t*)(&time))));
     buf[strlen(buf)-1] = 0; // remove \n
     return buf;
 }
 
+inline char* size_string(long size) {
+    static char buf[2][32];
+    static int which = 0;
+    which = 1 - which;
+    if (size < 104857) sprintf(buf[which], "%.2fk", (float)size/1024);
+    else if (size < 107374182) sprintf(buf[which], "%.2fM", (float)size/1048576);
+    else sprintf(buf[which], "%.2fG", (float)size/1073741824);
+    return buf[which];
+}
+
 bool txid_in_vtx(const uint256& txid, const std::vector<std::shared_ptr<bitcoin::tx>>& vtx) {
     for (const auto& x : vtx) if (x->m_hash == txid) return true;
     return false;
+}
+
+void parse_range(const char* expr, uint32_t& block_start, uint32_t& block_end, int64_t& time_start, int64_t& time_end) {
+    if (!strncmp("blocks=", expr, 6)) {
+        // blocks range
+        const char* range = &expr[7];
+        if (sscanf(range, "%u-%u", &block_start, &block_end) != 2) {
+            fprintf(stderr, "invalid block range (expected 'number-number', e.g. '123-124', got %s)\n", range);
+            exit(1);
+        }
+    } else if (!strncmp("period=", expr, 6)) {
+        // time range
+        const char* range = &expr[7];
+        if (sscanf(range, "%lld-%lld", &time_start, &time_end) != 2) {
+            fprintf(stderr, "invalid time range (expected 'number-number', e.g. '123-124', got %s)\n", range);
+            exit(1);
+        }
+    } else {
+        fprintf(stderr, "invalid range type in expression \"%s\" (accept blocks and period)\n", expr);
+        exit(1);
+    }
 }

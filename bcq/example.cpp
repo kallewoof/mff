@@ -16,7 +16,7 @@ int main(int argc, const char** argv) {
 
     auto& dbpath = argv[1];
     auto& ajbpath = argv[2];
-    double min_feerate = 1.0/4;
+    double min_feerate = 0;
     if (argc > 3) min_feerate = atof(argv[3]);
 
     // do some stuff...
