@@ -20,9 +20,9 @@ int main(int argc, const char** argv) {
     }
 
     uint32_t block_start = 0;
-    uint32_t block_end = -1;
+    uint32_t block_end = 0;
     int64_t time_start = 0;
-    int64_t time_end = 0xffffffffffffff;
+    int64_t time_end = 0;
 
     const auto& dbpath = argv[1];
     const auto& txidstr = argv[2];
