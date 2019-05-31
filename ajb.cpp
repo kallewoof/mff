@@ -89,7 +89,7 @@ bool ajb::process_block_hash(const uint256& blockhash) {
     uint32_t height;
     if (rpc->get_block(blockhash, blk, height)) {
         // if this is the current block, we ignore
-        if (mff->m_chain.get_blocks().size() && mff->m_chain.get_blocks().back()->m_hash != blockhash) {
+        if (!mff->m_chain.get_blocks().size() || mff->m_chain.get_blocks().back()->m_hash != blockhash) {
             // fill in gaps in case this is not the next block
             uint32_t expected_block_height = mff->get_height() == 0 ? height : mff->get_height() + 1;
             if (expected_block_height && expected_block_height < height) {
