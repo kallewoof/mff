@@ -60,7 +60,7 @@ int main(int argc, const char** argv) {
             long pos2 = mff->m_file->tell();
             float done = 100.f * pos / in_bytes;
             auto ts = time_string(a.current_time);
-            printf(" [%5.2f%%] %zu [%zu] %ld -> %ld : %s <cluster=%" PRIid " block=%u>     \r", done, entries, mff->m_entries, pos, pos2, ts.c_str(), cluster, block_height);
+            printf(" [%5.2f%%] %zu [%zu] %ld -> %ld : %s <cluster=%" PRIid " block=%u, mempool rejections=%zu>     \r", done, entries, mff->m_entries, pos, pos2, ts.c_str(), cluster, block_height, mempool->rejections);
             fflush(stdout);
         }
     }

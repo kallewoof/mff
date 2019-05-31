@@ -125,19 +125,17 @@ int main(int argc, const char** argv) {
     for (auto& x : azr.usage) {
         counted -= x.second;
         uint64_t count = azr.count[x.first];
-        printf("%25s : %-10zu (%5.2f%%) [%-8" PRIi64 " (%5.2f%%)]\n", bitcoin::cmd_string(x.first).c_str(), x.second, 100.0 * x.second / total, count, 100.0 * count / entries);
+        printf("%-25s : %10zu (%5.2f%%) [%8" PRIi64 " (%5.2f%%)]\n", bitcoin::cmd_string(x.first).c_str(), x.second, 100.0 * x.second / total, count, 100.0 * count / entries);
         if (x.first == bitcoin::mff::cmd_mempool_in) {
             uint64_t count2 = azr.total_txrecs;
             uint64_t amount = azr.total_txrec_bytes;
-            printf("%25s : %-10llu (%5.2f%%) [%-8" PRIi64 " (%5.2f%%)]\n", "(tx recordings)", amount, 100.0 * amount / total, count2, 100.0 * count2 / entries);
+            printf("%-25s : %10llu (%5.2f%%) [%8" PRIi64 " (%5.2f%%)]\n", "(tx recordings)", amount, 100.0 * amount / total, count2, 100.0 * count2 / entries);
             amount = x.second - amount;
             count2 = count - count2;
-            printf("%25s : %-10llu (%5.2f%%) [%-8" PRIi64 " (%5.2f%%)]\n", "(tx references)", amount, 100.0 * amount / total, count2, 100.0 * count2 / entries);
+            printf("%-25s : %10llu (%5.2f%%) [%8" PRIi64 " (%5.2f%%)]\n", "(tx references)", amount, 100.0 * amount / total, count2, 100.0 * count2 / entries);
         }
     }
-    printf("unaccounted: %-10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
-
-    printf("timestamp at end: %ld\n", f.m_current_time);
+    printf("unaccounted: %10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
 }
 
 inline std::string time_string(int64_t time) {

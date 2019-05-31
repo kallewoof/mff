@@ -26,6 +26,34 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
     // avoid duplicate insertions
     if (entry_map.count(x->hash)) return;
 
+    // fetch input amounts
+    uint64_t in_sum = 0;
+    bool unknown_inputs = false;
+    if (!x->IsCoinBase()) {
+        for (const auto& in : x->vin) {
+            if (entry_map.count(in.prevout.hash)) {
+                in_sum += entry_map[in.prevout.hash]->x->vout[in.prevout.n].value;
+            } else {
+                auto a = amap::output_amount(in.prevout.hash, in.prevout.n);
+                if (a == -1) {
+                    unknown_inputs = true;
+                    break;
+                }
+                in_sum += a;
+            }
+        }
+    }
+
+    // create new entry
+    std::shared_ptr<const mempool_entry> entry = std::make_shared<const mempool_entry>(x, in_sum, unknown_inputs);
+    entry_map[x->hash] = entry;
+
+    // min feerate check
+    if (!retain && entry->feerate() < min_feerate) {
+        // this tx has too low fee so we won't let it in, nor will we evict conflicting txs
+        return;
+    }
+
     // find and evict transactions that conflict with x
     std::set<std::shared_ptr<const mempool_entry>> evictees;
     if (!x->IsCoinBase()) {
@@ -52,28 +80,6 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
             }
         }
     }
-
-    // fetch input amounts
-    uint64_t in_sum = 0;
-    bool unknown_inputs = false;
-    if (!x->IsCoinBase()) {
-        for (const auto& in : x->vin) {
-            if (entry_map.count(in.prevout.hash)) {
-                in_sum += entry_map[in.prevout.hash]->x->vout[in.prevout.n].value;
-            } else {
-                auto a = amap::output_amount(in.prevout.hash, in.prevout.n);
-                if (a == -1) {
-                    unknown_inputs = true;
-                    break;
-                }
-                in_sum += a;
-            }
-        }
-    }
-
-    // create new entry
-    std::shared_ptr<const mempool_entry> entry = std::make_shared<const mempool_entry>(x, in_sum, unknown_inputs);
-    entry_map[x->hash] = entry;
 
     // perform evictions
     for (const auto& e : evictees) {
