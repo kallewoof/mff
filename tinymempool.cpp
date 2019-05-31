@@ -50,6 +50,7 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
     // min feerate check
     if (!retain && entry->feerate() < min_feerate) {
         // this tx has too low fee so we won't let it in, nor will we evict conflicting txs
+        ++rejections;
         return;
     }
 
