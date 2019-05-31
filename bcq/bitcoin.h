@@ -200,7 +200,7 @@ public:
         if (m_tip - height >= m_blocks.size()) return nullptr;
         block* b = m_blocks.at(m_tip - height);
         if (b->m_height == height) return b;
-        // fallback to linlog
+        // fallback to binsearch
         bool toohigh = b->m_height > height;
         size_t m = m_tip - height;
         size_t l = toohigh ? 0 : m + 1;
