@@ -84,6 +84,7 @@ int64_t ajb::get_tx_input_amount(tiny::tx& tx)
 
 bool ajb::process_block_hash(const uint256& blockhash) {
     // printf("- read blk %s\n", blockhash.ToString().c_str());
+    bool update_next = next_block.IsNull() || blockhash == next_block;
     tiny::block blk;
     uint32_t height;
     if (rpc->get_block(blockhash, blk, height)) {
@@ -100,10 +101,14 @@ bool ajb::process_block_hash(const uint256& blockhash) {
             }
         }
         confirm(height, blockhash, blk);
-    }
-    // determine the time/hash of the next block, if any
-    if (rpc->get_block(height+1, blk, next_block)) {
-        next_block_time = blk.time;
+        if (update_next) {
+            // determine the time/hash of the next block, if any
+            if (rpc->get_block(height+1, blk, next_block)) {
+                next_block_time = blk.time;
+            } else {
+                next_block_time = 0;
+            }
+        }
     }
     return true;
 }
