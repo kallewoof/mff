@@ -135,7 +135,8 @@ struct tx : public cq::object {
         m_vout.insert(m_vout.begin(), t.m_vout.begin(), t.m_vout.end());
     }
 
-    tx(const tiny::mempool_entry& t);
+    explicit tx(const tiny::mempool_entry& t);
+    explicit tx(const tiny::tx& t);
 
     prepare_for_serialization();
 };
@@ -535,10 +536,11 @@ public:
     std::shared_ptr<mff> m_mff;
     std::set<std::shared_ptr<tx>> m_pending_btxs;
     mff_mempool_callback(long& current_time, std::shared_ptr<mff> mff) : m_current_time(current_time), m_mff(mff) {}
-    virtual void add_entry(std::shared_ptr<const tiny::mempool_entry>& entry);
-    virtual void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause);
-    virtual void push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs);
-    virtual void pop_block(int height);
+    virtual void add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) override;
+    virtual void skipping_mined_tx(std::shared_ptr<tiny::tx> tx) override;
+    virtual void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) override;
+    virtual void push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs) override;
+    virtual void pop_block(int height) override;
 
     void discard(std::shared_ptr<const tiny::mempool_entry>& entry, uint8_t reason, std::shared_ptr<tiny::tx>& cause);
 };

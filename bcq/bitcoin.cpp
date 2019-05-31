@@ -51,6 +51,22 @@ tx::tx(const tiny::mempool_entry& entry) {
     }
 }
 
+tx::tx(const tiny::tx& x) {
+    m_sid = cq::unknownid;
+    m_hash = x.hash;
+    m_weight = x.GetWeight();
+    m_fee = 0;
+    m_vin.clear();
+    m_vout.clear();
+    for (const auto& vin : x.vin) {
+        const auto& prevout = vin.prevout;
+        m_vin.push_back(bitcoin::outpoint(prevout));
+    }
+    for (const auto& vout : x.vout) {
+        m_vout.push_back(vout.value);
+    }
+}
+
 void tx::serialize(cq::serializer* stream) const {
     // we do in fact serialize the txid here
     *stream << m_hash << cq::varint(m_weight) << cq::varint(m_fee);
@@ -162,6 +178,12 @@ void mff_mempool_callback::add_entry(std::shared_ptr<const tiny::mempool_entry>&
     auto ex = m_mff->tretch(tref->hash);
     if (!ex) ex = std::make_shared<tx>(*entry);
     m_mff->tx_entered(m_current_time, ex);
+}
+
+void mff_mempool_callback::skipping_mined_tx(std::shared_ptr<tiny::tx> x) {
+    auto ex = m_mff->tretch(x->hash);
+    if (!ex) ex = std::make_shared<tx>(*x);
+    m_pending_btxs.insert(ex);
 }
 
 void mff_mempool_callback::discard(std::shared_ptr<const tiny::mempool_entry>& entry, uint8_t reason, std::shared_ptr<tiny::tx>& cause) {

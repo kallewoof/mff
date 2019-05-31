@@ -97,6 +97,7 @@ struct mempool_entry {
 class mempool_callback {
 public:
     virtual void add_entry(std::shared_ptr<const mempool_entry>& entry) { assert(0); }
+    virtual void skipping_mined_tx(std::shared_ptr<tx> tx) { assert(0); }
     virtual void remove_entry(std::shared_ptr<const mempool_entry>& entry, MemPoolRemovalReason reason, std::shared_ptr<tx> cause) { assert(0); }
     virtual void push_block(int height, uint256 hash, const std::vector<tx>& txs) { assert(0); }
     virtual void pop_block(int height) { assert(0); }
@@ -124,6 +125,12 @@ public:
      * are temporarily added before removal
      */
     void insert_tx(std::shared_ptr<tx> x, bool retain = false);
+    /**
+     * Evict anything conflicting with x, exactly as if it was inserted into the
+     * mempool, except it isn't inserted. Used when processing a block and seeing
+     * a tx that is unknown.
+     */
+    void evict_for_tx(std::shared_ptr<tx> x, std::shared_ptr<const mempool_entry> entry_or_null = nullptr);
     /**
      * Remove entry from mempool. Any transactions which depend on x as input are
      * also removed.

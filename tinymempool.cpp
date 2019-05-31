@@ -20,6 +20,43 @@ typename T::const_iterator find_shared_entry(const T& v, const std::shared_ptr<c
 // };
 // inline bool check() { return depth == 1; }
 
+void mempool::evict_for_tx(std::shared_ptr<tx> x, std::shared_ptr<const mempool_entry> entry_or_null) {
+    // printf("*** will confirm %s ***\n", x->ToString().c_str());
+    if (entry_map.count(x->hash)) return;
+
+    // find and evict transactions that conflict with x
+    std::set<std::shared_ptr<const mempool_entry>> evictees;
+    if (!x->IsCoinBase()) {
+        // printf("- locating evictees\n");
+        for (const auto& in : x->vin) {
+            bool found = false;
+            auto prevout = in.prevout;
+            // printf("  - prevout %s %s\n", prevout.hash.ToString().c_str(), ancestry.count(prevout.hash) ? "found" : "not found");
+            if (ancestry.count(prevout.hash)) {
+                for (const auto& candidate : ancestry[prevout.hash]) {
+                    for (const auto& c_in : candidate->x->vin) {
+                        auto c_prevout = c_in.prevout;
+                        if (c_prevout.hash == prevout.hash && c_prevout.n == prevout.n) {
+                            // found a match
+                            // printf("  - evicting %s\n", candidate->x->hash.ToString().c_str());
+                            assert(candidate->x->hash != x->hash);
+                            evictees.insert(candidate);
+                            found = true;
+                            break; // c_in
+                        }
+                    }
+                    if (found) break; // candidate
+                }
+            }
+        }
+    }
+
+    // perform evictions
+    for (const auto& e : evictees) {
+        remove_entry(e, entry_or_null.get() ? determine_reason(entry_or_null, e) : MemPoolRemovalReason::CONFLICT, x);
+    }
+}
+
 void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
     // printf("*** insert %s ***\n", x->ToString().c_str());
     // entrypoint _e;
@@ -54,39 +91,9 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
         return;
     }
 
+    evict_for_tx(x, entry);
+
     entry_map[x->hash] = entry;
-
-    // find and evict transactions that conflict with x
-    std::set<std::shared_ptr<const mempool_entry>> evictees;
-    if (!x->IsCoinBase()) {
-        // printf("- locating evictees\n");
-        for (const auto& in : x->vin) {
-            bool found = false;
-            auto prevout = in.prevout;
-            // printf("  - prevout %s %s\n", prevout.hash.ToString().c_str(), ancestry.count(prevout.hash) ? "found" : "not found");
-            if (ancestry.count(prevout.hash)) {
-                for (const auto& candidate : ancestry[prevout.hash]) {
-                    for (const auto& c_in : candidate->x->vin) {
-                        auto c_prevout = c_in.prevout;
-                        if (c_prevout.hash == prevout.hash && c_prevout.n == prevout.n) {
-                            // found a match
-                            // printf("  - evicting %s\n", candidate->x->hash.ToString().c_str());
-                            assert(candidate->x->hash != x->hash);
-                            evictees.insert(candidate);
-                            found = true;
-                            break; // c_in
-                        }
-                    }
-                    if (found) break; // candidate
-                }
-            }
-        }
-    }
-
-    // perform evictions
-    for (const auto& e : evictees) {
-        remove_entry(e, determine_reason(entry, e), x);
-    }
 
     // link ancestry
     if (!x->IsCoinBase()) {
@@ -206,7 +213,8 @@ void mempool::process_block(int height, uint256 hash, const std::vector<tx>& txs
     // entrypoint _e;
     for (const auto& x : txs) {
         if (!entry_map.count(x.hash)) {
-            insert_tx(std::make_shared<tx>(x), true);
+            if (callback) callback->skipping_mined_tx(std::make_shared<tx>(x));
+            evict_for_tx(std::make_shared<tx>(x));
         }
         if (entry_map.count(x.hash)) {
             remove_entry(entry_map[x.hash], MemPoolRemovalReason::BLOCK);
