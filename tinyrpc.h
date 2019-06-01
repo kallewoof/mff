@@ -113,7 +113,7 @@ struct rpc {
             fphdr = OpenFile(dstheight, "r");
             if (fscanf(fphdr->m_fp, "%u", &height) != 1) {
                 // block is probably an orphan block
-                printf("failure to load orphan block %u=%s\n", height, blockhex.ToString().c_str());
+                printf("failure to load orphan block %u=%s                          \n", height, blockhex.ToString().c_str());
                 // fprintf(stderr, "UNDETECTED FAILURE: BLOCK=%s\n", blockhex.ToString().c_str());
                 return false;
             }
