@@ -7,7 +7,6 @@
 
 #include <cqdb/cq.h>
 #include <cqdb/uint256.h>
-#include <tinymempool.h>
 
 #define BITCOIN_SER(T) \
     template<typename Stream> void serialize(Stream& stm, const T& t) { t.Serialize(stm); } \
@@ -17,15 +16,13 @@ BITCOIN_SER(uint256);
 
 namespace tiny {
 
-BITCOIN_SER(txin);
-BITCOIN_SER(txout);
+struct mempool_entry;
+struct tx;
+struct outpoint;
 
 }
 
 namespace bitcoin {
-
-void load_mempool(std::shared_ptr<tiny::mempool>& mempool, const std::string& path);
-void save_mempool(std::shared_ptr<tiny::mempool>& mempool, const std::string& path);
 
 struct outpoint : public cq::serializable {
     uint256 m_txid;
@@ -34,7 +31,7 @@ struct outpoint : public cq::serializable {
     outpoint()                                {                    m_n = 0; }
     outpoint(uint64_t n, const uint256& txid) { m_txid = txid;     m_n = n; }
     outpoint(const outpoint& o)               { m_txid = o.m_txid; m_n = o.m_n; }
-    outpoint(const tiny::outpoint& o)         : outpoint(o.n, o.hash) {}
+    outpoint(const tiny::outpoint& o); // only available with utils.cpp
 
     static inline outpoint coinbase() { return outpoint(0xffffffff, uint256()); }
 
@@ -135,34 +132,11 @@ struct tx : public cq::object {
         m_vout.insert(m_vout.begin(), t.m_vout.begin(), t.m_vout.end());
     }
 
-    explicit tx(const tiny::mempool_entry& t);
-    explicit tx(const tiny::tx& t);
+    explicit tx(const tiny::mempool_entry& t);  // only available with utils.cpp
+    explicit tx(const tiny::tx& t);             // only available with utils.cpp
 
     prepare_for_serialization();
 };
-
-// struct block : cq::serializable {
-//     uint32_t m_height;
-//     uint256 m_hash;
-//     uint64_t m_count_known;
-//     std::set<cq::id> m_known;
-//     std::set<uint256> m_unknown;
-
-//     block() {}
-
-//     block(const block& b) {
-//         m_height = b.m_height;
-//         m_hash = b.m_hash;
-//         m_count_known = b.m_count_known;
-//         m_known = b.m_known;
-//         m_unknown = b.m_unknown;
-//     }
-
-//     block(uint32_t height, const uint256& hash) {
-//         m_height = height;
-//         m_hash = hash;
-//     }
-// };
 
 class block : public cq::serializable {
 public:
@@ -527,22 +501,6 @@ public:
 
     void populate_touched_txids(std::set<uint256>& txids) const;
 
-};
-
-
-class mff_mempool_callback : public tiny::mempool_callback {
-public:
-    long& m_current_time;
-    std::shared_ptr<mff> m_mff;
-    std::set<std::shared_ptr<tx>> m_pending_btxs;
-    mff_mempool_callback(long& current_time, std::shared_ptr<mff> mff) : m_current_time(current_time), m_mff(mff) {}
-    virtual void add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) override;
-    virtual void skipping_mined_tx(std::shared_ptr<tiny::tx> tx) override;
-    virtual void remove_entry(std::shared_ptr<const tiny::mempool_entry>& entry, tiny::MemPoolRemovalReason reason, std::shared_ptr<tiny::tx> cause) override;
-    virtual void push_block(int height, uint256 hash, const std::vector<tiny::tx>& txs) override;
-    virtual void pop_block(int height) override;
-
-    void discard(std::shared_ptr<const tiny::mempool_entry>& entry, uint8_t reason, std::shared_ptr<tiny::tx>& cause);
 };
 
 } // namespace bitcoin

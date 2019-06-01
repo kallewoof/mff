@@ -63,12 +63,8 @@ libmff_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 # CQ library (which uses libbcqdb) #
 
 libbcq_a_SOURCES = \
-    amap.h \
-    amap.cpp \
 	bcq/bitcoin.cpp \
-	bcq/bitcoin.h \
-    tinymempool.h \
-    tinymempool.cpp
+	bcq/bitcoin.h
 libbcq_a_CPPFLAGS = $(AM_CPPFLAGS)
 libbcq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 bcqdbincludedir = $(includedir)/bcq
@@ -129,7 +125,13 @@ aj2bin_LDADD = \
 example_SOURCES = \
 	ajb.h \
 	ajb.cpp \
-	bcq/example.cpp
+    amap.h \
+    amap.cpp \
+	bcq/example.cpp \
+	bcq/utils.h \
+	bcq/utils.cpp \
+    tinymempool.h \
+    tinymempool.cpp
 example_CPPFLAGS = $(AM_CPPFLAGS)
 example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb

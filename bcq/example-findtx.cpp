@@ -139,23 +139,28 @@ int main(int argc, const char** argv) {
     uint32_t blocks = 1 + last_block - first_block;
     printf("start = %ld (%lld) [height %u]\n"
            "end   = %lld (%lld) [height %u]\n", internal_start_time, start_time, first_block, recorded_end_time, end_time, last_block);
-    printf("%" PRIu64 " entries over %" PRIi64 " days, %" PRIi64 " hours (%u blocks) parsed in %" PRIi64 " seconds (%" PRIi64 " entries/s, or %" PRIi64 " hours/real second, or %u blocks/minute)\n", entries, days, hours, blocks, end_time - start_time, entries / (end_time - start_time), htotal / (end_time - start_time), blocks * 60 / (end_time - start_time));
+    printf("%" PRIu64 " entries over %" PRIi64 " days, %" PRIi64 " hours (%u blocks) parsed in %" PRIi64 " seconds (%" PRIi64 " entries/s, or %" PRIi64 " hours/real second, or %u blocks/minute)\n", entries, days, hours, blocks, end_time - start_time, entries / (end_time - start_time), htotal / (end_time - start_time), uint32_t(blocks * 60 / (end_time - start_time)));
 
     uint64_t total = azr.total_bytes;
     uint64_t counted = total;
-    printf("%-25s   %-10s (%-6s) [%-8s (%-6s)]\n", "category", "bytes", "%", "count", "%");
-    printf("=========================   ==========  ======   ========  ======  \n");
+    printf("%-25s   %-10s (%-6s) [%-8s (%-6s)] {%-10s}\n", "category", "bytes", "%", "count", "%", "avg bytes");
+    printf("=========================   ==========  ======   ========  ======    ==========\n");
+    #define P(category, bytes, count, avgbytes) printf("%-25s : %10zu (%5.2lf%%) [%8" PRIi64 " (%5.2lf%%)] {%10.2f}\n", category, bytes, 100.0 * (bytes) / total, count, 100.0 * (count) / entries, avgbytes);
+    
     for (auto& x : azr.usage) {
         counted -= x.second;
         uint64_t count = azr.count[x.first];
-        printf("%-25s : %10zu (%5.2f%%) [%8" PRIi64 " (%5.2f%%)]\n", bitcoin::cmd_string(x.first).c_str(), x.second, 100.0 * x.second / total, count, 100.0 * count / entries);
+        float avgbytes = (float)x.second / count;
+        P(bitcoin::cmd_string(x.first).c_str(), x.second, count, avgbytes);
         if (x.first == bitcoin::mff::cmd_mempool_in) {
             uint64_t count2 = azr.total_txrecs;
-            uint64_t amount = azr.total_txrec_bytes;
-            printf("%-25s : %10llu (%5.2f%%) [%8" PRIi64 " (%5.2f%%)]\n", "(tx recordings)", amount, 100.0 * amount / total, count2, 100.0 * count2 / entries);
+            size_t amount = azr.total_txrec_bytes;
+            float avgbytes2 = (float)amount / count2;
+            P("    (tx recordings)", amount, count2, avgbytes2);
             amount = x.second - amount;
             count2 = count - count2;
-            printf("%-25s : %10llu (%5.2f%%) [%8" PRIi64 " (%5.2f%%)]\n", "(tx references)", amount, 100.0 * amount / total, count2, 100.0 * count2 / entries);
+            avgbytes2 = (float)amount / count2;
+            P("    (tx references)", amount, count2, avgbytes2);
         }
     }
     printf("unaccounted: %10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);

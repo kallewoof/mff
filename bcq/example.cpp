@@ -1,4 +1,5 @@
 #include <bcq/bitcoin.h>
+#include <bcq/utils.h>
 #include <test/helpers.h>
 #include <serialize.h>
 #include <tinymempool.h>
