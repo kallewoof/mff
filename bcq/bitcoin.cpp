@@ -1,6 +1,8 @@
 #include <bcq/bitcoin.h>
 // #include <streams.h>
 
+extern "C" { void libbcq_is_present(void) {} } // hello autotools, pleased to meat you
+
 namespace bitcoin {
 
 const uint8_t mff::cmd_time_set;

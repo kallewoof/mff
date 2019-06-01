@@ -31,7 +31,7 @@ int main(int argc, const char** argv) {
     const uint256 txid = uint256S(argv[2]);
 
     // mff handles the mempool file format disk I/O; it is our source in this case
-    auto mff = std::make_shared<bitcoin::mff>(argv[1], "example", 2016, true);
+    auto mff = std::make_shared<bitcoin::mff>(argv[1], "mff", 2016, true);
     bitcoin::mff& f = *mff;
     f.load();
 

@@ -14,6 +14,8 @@
 
 BITCOIN_SER(uint256);
 
+extern "C" { void libbcq_is_present(void); } // hello autotools, pleased to meat you
+
 namespace tiny {
 
 struct mempool_entry;
