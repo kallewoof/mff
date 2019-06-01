@@ -85,11 +85,11 @@ struct mempool_entry {
     }
 #ifndef TINY_NOSERIALIZE
     /**
-     * Calculates the fee rate in satoshi per sipa (multiply by 4 to get satoshi per virtual byte).
+     * Calculates the fee rate in satoshi per virtual byte.
      */
     double feerate() const {
         if (x->IsCoinBase() || unknown_inputs) return 0;
-        return (double)fee() / x->GetWeight();
+        return 4.0 * fee() / x->GetWeight();
     }
 #endif
 };
@@ -110,7 +110,7 @@ private:
 public:
     constexpr static size_t MAX_ENTRIES = 10000; // keep max this many transactions
     constexpr static size_t MAX_REFS = 50000; // keep this many references
-    double min_feerate = 0; // satoshi/sipa minimum feerate required to allow a transaction into the mempool
+    double min_feerate = 0; // satoshi/vbyte minimum feerate required to allow a transaction into the mempool
     size_t rejections = 0; // number of txs that were rejected due to feerate minimum check
     mempool_callback* callback = nullptr;
     std::map<uint256, std::shared_ptr<const mempool_entry>> entry_map;

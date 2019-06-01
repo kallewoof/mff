@@ -131,7 +131,7 @@ int main(int argc, const char** argv) {
     last_block = f.m_chain.m_tip;
     int64_t recorded_end_time = f.m_current_time;
     int64_t end_time = GetTime();
-    printf("%s: ----log ends----\n", time_string(recorded_end_time));
+    printf("\n%s: ----log ends----\n", time_string(recorded_end_time));
     int64_t elapsed = recorded_end_time - internal_start_time;
     int64_t htotal = elapsed / 3600;
     int64_t days = elapsed / 86400;

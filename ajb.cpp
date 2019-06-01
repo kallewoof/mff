@@ -84,7 +84,6 @@ int64_t ajb::get_tx_input_amount(tiny::tx& tx)
 
 bool ajb::process_block_hash(const uint256& blockhash) {
     // printf("- read blk %s\n", blockhash.ToString().c_str());
-    bool update_next = next_block.IsNull() || blockhash == next_block;
     tiny::block blk;
     uint32_t height;
     if (rpc->get_block(blockhash, blk, height)) {
@@ -104,13 +103,11 @@ bool ajb::process_block_hash(const uint256& blockhash) {
                 }
             }
             confirm(height, blockhash, blk);
-            if (update_next) {
-                // determine the time/hash of the next block, if any
-                if (rpc->get_block(height+1, blk, next_block)) {
-                    next_block_time = blk.time + 300;
-                } else {
-                    next_block_time = 0;
-                }
+            // determine the time/hash of the next block, if any
+            if (rpc->get_block(height+1, blk, next_block)) {
+                next_block_time = blk.time + 300;
+            } else {
+                next_block_time = 0;
             }
         }
     }
@@ -135,6 +132,32 @@ bool ajb::read_entry() {
         {
             tiny::tx tx;
             in >> tx;
+            // we want to catch up with whatever block was mined before tx
+            // unless we already know when the next block is arriving
+            if (next_block_time == 0) {
+                tiny::block block;
+                uint32_t height;
+                if (rpc->get_tx_block(tx.hash, block, height)) {
+                    // presumably, the next block is "block". we want to make sure
+                    // we are up to speed on the previous one
+                    if (height == mff->m_chain.m_tip + 1) {
+                        next_block_time = block.time;
+                        next_block = block.GetHash();
+                    } else {
+                        // find the first block whose timestamp < current_time, then mine up to it
+                        // and mark up the next block
+                        uint32_t height2;
+                        uint256 hash2;
+                        if (rpc->find_block_near_timestamp(current_time, mff->m_chain.m_tip > height - 200 ? mff->m_chain.m_tip : height - 200, height, height2, hash2)) {
+                            process_block_hash(hash2);
+                        } else {
+                            // whatever, just confirm the block at height-1
+                            rpc->get_block(height - 1, block, hash2);
+                            process_block_hash(hash2);
+                        }
+                    }
+                }
+            }
             // printf("- read tx %s\n", tx.ToString().c_str());
             if (!tx.IsCoinBase()) {
                 mempool->insert_tx(std::make_shared<tiny::tx>(tx));
