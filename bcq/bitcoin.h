@@ -295,6 +295,8 @@ public:
         m_delegate = nullptr;
     }
 
+    static std::string detect_prefix(const std::string& dbpath);
+
     uint32_t get_height() const { return m_chain.m_tip; }
 
     //////////////////////////////////////////////////////////////////////////////////////
@@ -473,6 +475,8 @@ inline const std::string& cmd_string(uint8_t cmd) {
 
 class mff_analyzer : public mff_delegate {
 public:
+    bool enable_touchmap = false;
+    mutable std::map<uint256,uint32_t> touchmap; // requires above bool set to true and calls to populate_touched_txids() after every iteration
     uint64_t total_bytes{0};
     uint64_t total_txrecs{0};
     uint64_t total_txrec_bytes{0};

@@ -31,7 +31,7 @@ int main(int argc, const char** argv) {
     const uint256 txid = uint256S(argv[2]);
 
     // mff handles the mempool file format disk I/O; it is our source in this case
-    auto mff = std::make_shared<bitcoin::mff>(argv[1], "mff", 2016, true);
+    auto mff = std::make_shared<bitcoin::mff>(argv[1], bitcoin::mff::detect_prefix(argv[1]), 2016, true);
     bitcoin::mff& f = *mff;
     f.load();
 
@@ -60,6 +60,7 @@ int main(int argc, const char** argv) {
     uint64_t entries = 0;
     int64_t start_time = GetTime();
     std::set<uint256> touched_txids;
+    azr.enable_touchmap = true;
     while (f.iterate()) {
         if (block_end && f.m_chain.m_tip > block_end) break;
         if (time_end && f.m_current_time > time_end) break;
@@ -113,7 +114,7 @@ int main(int argc, const char** argv) {
                     //     extra = " (?)";
                     //     // printf(" (???: ");
                     // }
-                    printf(" (first seen %s%s - %" PRIu64 " vbytes, %" PRIu64 " fee, %.3lf fee rate (sat/sipa), block #%u)\n", txid_str(t->m_hash).c_str(), extra.c_str(), t->vsize(), t->m_fee, t->feerate(), mff->m_chain.m_tip);
+                    printf(" (first seen %s%s - %" PRIu64 " vbytes, %" PRIu64 " fee, %.3lf fee rate (sat/vb), block #%u)", txid_str(t->m_hash).c_str(), extra.c_str(), t->vsize(), t->m_fee, t->feerate(), mff->m_chain.m_tip);
                     // const mff::tx& t = *azr.txs[azr.seqs[txid]];
                     // printf(" (txid seq=%" PRIu64 ") %s", azr.seqs[txid], t->to_string().c_str());
                     // for (const auto& x : t->vin) if (x.is_known()) printf("\n- %" PRIu64 " = %s", x.get_seq(), azr.txs[x.get_seq()]->id.ToString().c_str());
@@ -131,6 +132,7 @@ int main(int argc, const char** argv) {
     last_block = f.m_chain.m_tip;
     int64_t recorded_end_time = f.m_current_time;
     int64_t end_time = GetTime();
+    end_time += end_time == start_time;
     printf("\n%s: ----log ends----\n", time_string(recorded_end_time));
     int64_t elapsed = recorded_end_time - internal_start_time;
     int64_t htotal = elapsed / 3600;
@@ -164,6 +166,15 @@ int main(int argc, const char** argv) {
         }
     }
     printf("unaccounted: %10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
+
+    printf("txid hits:\n");
+    uint32_t max = 0;
+    for (const auto& th : azr.touchmap) {
+        if (th.second > max || (th.second == max && max > 4)) {
+            printf("%s: %6u\n", th.first.ToString().c_str(), th.second);
+            max = th.second;
+        }
+    }
 }
 
 inline char* time_string(int64_t time) {

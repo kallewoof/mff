@@ -64,10 +64,19 @@ void block::deserialize(cq::serializer* stream) {
     m_hash.Unserialize(*stream);
 }
 
-std::vector<uint256> last_txids;
-std::vector<std::shared_ptr<tx>> last_txs;
-uint8_t last_command;
-uint256 last_cause;
+std::string mff::detect_prefix(const std::string& dbpath) {
+    std::vector<std::string> list;
+    if (cq::listdir(dbpath, list)) {
+        for (const std::string& f : list) {
+            if (f.size() > 8 && f.substr(f.size() - 3) == ".cq") {
+                // <prefix>NNNNN.cq
+                std::string prefix = f.substr(0, f.size() - 8);
+                return prefix;
+            }
+        }
+    }
+    return "mff";
+}
 
 void mff_analyzer::receive_transaction(std::shared_ptr<tx> x) { set(mff::cmd_mempool_in, x); }
 
@@ -122,9 +131,17 @@ void mff_analyzer::iterated(long starting_pos, long resulting_pos) {
 void mff_analyzer::populate_touched_txids(std::set<uint256>& txids) const {
     txids.clear();
     txids.insert(last_txids.begin(), last_txids.end());
-    for (const auto& tx : last_txs) txids.insert(tx->m_hash);
+    for (const auto& tx : last_txs) {
+        txids.insert(tx->m_hash);
+        for (const auto& i : tx->m_vin) {
+            txids.insert(i.m_txid);
+        }
+    }
     if (!last_cause.IsNull()) txids.insert(last_cause);
     if (last_mined_block) txids.insert(last_mined_block->m_txids.begin(), last_mined_block->m_txids.end());
+    if (enable_touchmap) {
+        for (const auto& u : txids) ++touchmap[u];
+    }
 }
 
 } // namespace bitcoin
