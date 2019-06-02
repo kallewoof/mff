@@ -9,15 +9,13 @@ EXTRA_LIBRARIES =
 BITCOIN_INCLUDES=-I$(builddir)
 
 LIBBITCOIN=libbitcoin.a
-LIBMFF=libmff.a
 LIBBCQ=libbcq.a
 
 EXTRA_LIBRARIES += \
   $(LIBBITCOIN) \
-  $(LIBMFF) \
   $(LIBBCQ)
 
-bin_PROGRAMS = mff-reader mff-conv aj2bin
+bin_PROGRAMS = aj2bin
 noinst_PROGRAMS = example example-findtx test-mff
 lib_LIBRARIES = libbcq.a
 
@@ -51,15 +49,6 @@ libbitcoin_a_SOURCES = \
     utiltime.cpp \
     $(BITCOIN_CORE_H)
 
-# mff library #
-libmff_a_SOURCES = \
-	cliargs.h \
-	tinytx.h \
-	txmempool_format.cpp \
-	txmempool_format.h
-libmff_a_CPPFLAGS = $(AM_CPPFLAGS)
-libmff_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-
 # CQ library (which uses libbcqdb) #
 
 libbcq_a_SOURCES = \
@@ -70,46 +59,6 @@ libbcq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
 bcqdbincludedir = $(includedir)/bcq
 bcqdbinclude_HEADERS = bcq/bitcoin.h
 
-# mff-reader binary #
-mff_reader_SOURCES = \
-	mff-reader.cpp
-mff_reader_CPPFLAGS = $(AM_CPPFLAGS)
-mff_reader_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-mff_reader_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
-
-mff_reader_LDADD = \
-    $(LIBMFF) \
-    $(LIBBITCOIN)
-
-# mff-conv binary #
-mff_conv_SOURCES = \
-    amap.h \
-    amap.cpp \
-    mff-conv.cpp \
-	tinyfs.h \
-    tinyblock.h \
-    tinymempool.h \
-    tinymempool.cpp \
-    txmempool_format_rs.cpp \
-    txmempool_format_rs.h \
-    txmempool_format_aj.cpp \
-    txmempool_format_aj.h \
-	txmempool_format_ajb.cpp \
-    txmempool_format_ajb.h \
-    txmempool_format_timetail.h \
-    txmempool_format_timetail.cpp \
-    txmempool_format_simpletime.h \
-    txmempool_format_simpletime.cpp \
-	txmempool_format_relseq.h \
-    txmempool_format_relseq.cpp
-mff_conv_CPPFLAGS = $(AM_CPPFLAGS)
-mff_conv_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-mff_conv_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
-
-mff_conv_LDADD = \
-    $(LIBMFF) \
-    $(LIBBITCOIN)
-
 # aj2bin binary #
 aj2bin_SOURCES = \
 	aj2bin.cpp
@@ -118,7 +67,6 @@ aj2bin_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 aj2bin_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
 
 aj2bin_LDADD = \
-    $(LIBMFF) \
     $(LIBBITCOIN)
 
 # example binary #
