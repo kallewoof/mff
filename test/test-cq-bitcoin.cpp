@@ -46,9 +46,10 @@ TEST_CASE("mff", "[mff]") {
     SECTION("tx_entered") {
         long pos;
         bitcoin::mff_analyzer azr;
-        auto ob = make_random_tx();
+        auto ob = make_random_tx(nullptr);
         {
             auto mff = new_mff(&azr);
+            ob->m_compressor = mff.get();
             mff->begin_segment(500000);
             pos = mff->m_file->tell();
             mff->tx_entered(1558067026, ob);
@@ -59,6 +60,7 @@ TEST_CASE("mff", "[mff]") {
         }
         {
             auto mff = open_mff(&azr);
+            ob->m_compressor = mff.get();
             // opening should automatically read up to the end and load in any objects
             // in the process, which means we should from the get-go have 'ob' again
             REQUIRE(mff->m_current_time == 1558067026);
@@ -89,10 +91,12 @@ TEST_CASE("mff", "[mff]") {
     SECTION("tx_left") {
         long pos;
         bitcoin::mff_analyzer azr;
-        auto ob = make_random_tx();
-        auto ob2 = make_random_tx();
+        auto ob = make_random_tx(nullptr);
+        auto ob2 = make_random_tx(nullptr);
         {
             auto mff = new_mff(&azr);
+            ob->m_compressor = mff.get();
+            ob2->m_compressor = mff.get();
             mff->begin_segment(500000);
             pos = mff->m_file->tell();
             mff->tx_entered(1558067026, ob);
@@ -117,6 +121,8 @@ TEST_CASE("mff", "[mff]") {
         }
         {
             auto mff = open_mff(&azr);
+            ob->m_compressor = mff.get();
+            ob2->m_compressor = mff.get();
             REQUIRE(mff->m_current_time == 1558067028);
             REQUIRE(mff->m_references.count(ob->m_hash));
             REQUIRE(mff->m_references.count(ob2->m_hash));
@@ -165,11 +171,14 @@ TEST_CASE("mff", "[mff]") {
     SECTION("tx_discarded") {
         long pos;
         bitcoin::mff_analyzer azr;
-        auto ob = make_random_tx();
-        auto ob2 = make_random_tx();
-        auto ob3 = make_random_tx();
+        auto ob = make_random_tx(nullptr);
+        auto ob2 = make_random_tx(nullptr);
+        auto ob3 = make_random_tx(nullptr);
         {
             auto mff = new_mff(&azr);
+            ob->m_compressor = mff.get();
+            ob2->m_compressor = mff.get();
+            ob3->m_compressor = mff.get();
             mff->begin_segment(500000);
             pos = mff->m_file->tell();
             mff->tx_entered(1558067026, ob);
@@ -193,6 +202,9 @@ TEST_CASE("mff", "[mff]") {
         }
         {
             auto mff = open_mff(&azr);
+            ob->m_compressor = mff.get();
+            ob2->m_compressor = mff.get();
+            ob3->m_compressor = mff.get();
             REQUIRE(mff->m_current_time == 1558067028);
             REQUIRE(mff->m_references.count(ob->m_hash));
             REQUIRE(mff->m_references.count(ob2->m_hash));
@@ -273,7 +285,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             uint8_t reason;
             // txs from before recording began
             size_t pretxs = random_word() % 100;
-            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx();
+            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx(mff.get());
             for (size_t i = 0; i < 10000; ++i) {
                 auto action = random_byte() % 9;
                 // fprintf(stderr, ": %s\n", ((const char*[]){"tx in", "tx in", "tx in", "tx in", "tx out", "tx out", "tx invalid", "block confirm", "block reorg"})[action]);
@@ -283,7 +295,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 2:
                 case 3:
                     // fprintf(stderr, "tx in\n");
-                    tx = make_random_tx();
+                    tx = make_random_tx(mff.get());
                     t += tx;
                     mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
@@ -308,7 +320,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                             offender = t.sample();
                         } else {
                             // unknown offender
-                            offender = make_random_tx();
+                            offender = make_random_tx(mff.get());
                         }
                         tx = t.sample(&offender);
                     } else {
@@ -401,7 +413,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             uint8_t reason;
             // txs from before recording began
             size_t pretxs = random_word() % 100;
-            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx();
+            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx(mff.get());
             for (size_t i = 0; i < 100000; ++i) {
                 auto action = random_byte() % 9;
                 // fprintf(stderr, ": %s\n", ((const char*[]){"tx in", "tx in", "tx in", "tx in", "tx out", "tx out", "tx invalid", "block confirm", "block reorg"})[action]);
@@ -411,7 +423,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 2:
                 case 3:
                     // fprintf(stderr, "tx in\n");
-                    tx = make_random_tx();
+                    tx = make_random_tx(mff.get());
                     t += tx;
                     mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
@@ -436,7 +448,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                             offender = t.sample();
                         } else {
                             // unknown offender
-                            offender = make_random_tx();
+                            offender = make_random_tx(mff.get());
                         }
                         tx = t.sample(&offender);
                     } else {
@@ -529,7 +541,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             uint8_t reason;
             // txs from before recording began
             size_t pretxs = random_word() % 100;
-            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx();
+            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx(mff.get());
             for (size_t i = 0; i < 250000; ++i) {
                 auto action = random_byte() % 9;
                 // fprintf(stderr, ": %s\n", ((const char*[]){"tx in", "tx in", "tx in", "tx in", "tx out", "tx out", "tx invalid", "block confirm", "block reorg"})[action]);
@@ -539,7 +551,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 2:
                 case 3:
                     // fprintf(stderr, "tx in\n");
-                    tx = make_random_tx();
+                    tx = make_random_tx(mff.get());
                     t += tx;
                     mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
@@ -564,7 +576,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                             offender = t.sample();
                         } else {
                             // unknown offender
-                            offender = make_random_tx();
+                            offender = make_random_tx(mff.get());
                         }
                         tx = t.sample(&offender);
                     } else {
@@ -657,7 +669,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
             uint8_t reason;
             // txs from before recording began
             size_t pretxs = random_word() % 100;
-            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx();
+            for (size_t i = 0; i < pretxs; ++i) t += make_random_tx(mff.get());
             for (size_t i = 0; i < 500000; ++i) {
                 auto action = random_byte() % 9;
                 // fprintf(stderr, ": %s\n", ((const char*[]){"tx in", "tx in", "tx in", "tx in", "tx out", "tx out", "tx invalid", "block confirm", "block reorg"})[action]);
@@ -667,7 +679,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                 case 2:
                 case 3:
                     // fprintf(stderr, "tx in\n");
-                    tx = make_random_tx();
+                    tx = make_random_tx(mff.get());
                     t += tx;
                     mff->tx_entered(mff->m_current_time + 1, tx);
                     REC(record_mempool_in(tx));
@@ -692,7 +704,7 @@ TEST_CASE("randomized sequence", "[random-sequence]") {
                             offender = t.sample();
                         } else {
                             // unknown offender
-                            offender = make_random_tx();
+                            offender = make_random_tx(mff.get());
                         }
                         tx = t.sample(&offender);
                     } else {

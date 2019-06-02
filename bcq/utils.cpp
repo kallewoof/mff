@@ -20,7 +20,7 @@ void save_mempool(std::shared_ptr<tiny::mempool>& mempool, const std::string& pa
 
 outpoint::outpoint(const tiny::outpoint& o) : outpoint(o.n, o.hash) {}
 
-tx::tx(const tiny::mempool_entry& entry) {
+tx::tx(cq::compressor<uint256>* compressor, const tiny::mempool_entry& entry) : tx(compressor) {
     auto tref = *entry.x;
     m_sid = cq::unknownid;
     m_hash = tref.hash;
@@ -37,7 +37,7 @@ tx::tx(const tiny::mempool_entry& entry) {
     }
 }
 
-tx::tx(const tiny::tx& x) {
+tx::tx(cq::compressor<uint256>* compressor, const tiny::tx& x) : tx(compressor) {
     m_sid = cq::unknownid;
     m_hash = x.hash;
     m_weight = x.GetWeight();
@@ -56,13 +56,13 @@ tx::tx(const tiny::tx& x) {
 void mff_mempool_callback::add_entry(std::shared_ptr<const tiny::mempool_entry>& entry) {
     const auto& tref = entry->x;
     auto ex = m_mff->tretch(tref->hash);
-    if (!ex) ex = std::make_shared<tx>(*entry);
+    if (!ex) ex = std::make_shared<tx>(m_mff.get(), *entry);
     m_mff->tx_entered(m_current_time, ex);
 }
 
 void mff_mempool_callback::skipping_mined_tx(std::shared_ptr<tiny::tx> x) {
     auto ex = m_mff->tretch(x->hash);
-    if (!ex) ex = std::make_shared<tx>(*x);
+    if (!ex) ex = std::make_shared<tx>(m_mff.get(), *x);
     m_pending_btxs.insert(ex);
 }
 
@@ -71,7 +71,7 @@ void mff_mempool_callback::discard(std::shared_ptr<const tiny::mempool_entry>& e
     const auto& tref = *entry->x;
     tref.Serialize(s);
     auto ex = m_mff->tretch(tref.hash);
-    if (!ex) ex = std::make_shared<tx>(*entry);
+    if (!ex) ex = std::make_shared<tx>(m_mff.get(), *entry);
     m_mff->tx_discarded(m_current_time, ex, s.get_chv(), reason, cause ? m_mff->tretch(cause->hash) : nullptr);
 }
 
@@ -93,7 +93,7 @@ void mff_mempool_callback::remove_entry(std::shared_ptr<const tiny::mempool_entr
     case tiny::MemPoolRemovalReason::BLOCK:     //! Removed for block
         {
             auto ex = m_mff->tretch(tref.hash);
-            if (!ex) ex = std::make_shared<tx>(*entry);
+            if (!ex) ex = std::make_shared<tx>(m_mff.get(), *entry);
             m_pending_btxs.insert(ex);
         }
         return;

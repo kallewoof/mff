@@ -27,7 +27,7 @@ void tx::serialize(cq::serializer* stream) const {
     {
         std::vector<uint256> vin_txids;
         for (const auto& in : m_vin) vin_txids.push_back(in.m_txid);
-        stream->m_compressor->compress(stream, vin_txids);
+        m_compressor->compress(stream, vin_txids);
     }
     for (auto& o : m_vin) {
         *stream << o;
@@ -41,7 +41,7 @@ void tx::deserialize(cq::serializer* stream) {
     m_weight = cq::varint::load(stream);
     m_fee = cq::varint::load(stream);
     std::vector<uint256> vin_txids;
-    stream->m_compressor->decompress(stream, vin_txids);
+    m_compressor->decompress(stream, vin_txids);
     size_t vin_sz = vin_txids.size();
     m_vin.resize(vin_sz);
     for (size_t i = 0; i < vin_sz; ++i) {

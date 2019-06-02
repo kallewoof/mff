@@ -6,15 +6,15 @@
 #include <inttypes.h>
 
 #include <cqdb/cq.h>
-#include <cqdb/uint256.h>
+#include <uint256.h>
 
 #define BITCOIN_SER(T) \
     template<typename Stream> void serialize(Stream& stm, const T& t) { t.Serialize(stm); } \
     template<typename Stream> void unserialize(Stream& stm, T& t) { t.Unserialize(stm); }
 
-BITCOIN_SER(uint256);
-
 extern "C" { void libbcq_is_present(void); } // hello autotools, pleased to meat you
+
+BITCOIN_SER(uint256);
 
 namespace tiny {
 
@@ -58,7 +58,7 @@ struct outpoint : public cq::serializable {
     }
 };
 
-struct tx : public cq::object {
+struct tx : public cq::object<uint256> {
     static inline std::set<uint256> hashset(const std::set<std::shared_ptr<tx>>& txs) {
         std::set<uint256> rval;
         for (const auto& tx : txs) rval.insert(tx->m_hash);
@@ -117,9 +117,9 @@ struct tx : public cq::object {
         return s;
     }
 
-    tx() : cq::object() { location = location_in_mempool; }
+    tx(cq::compressor<uint256>* compressor) : cq::object<uint256>(compressor) { location = location_in_mempool; }
 
-    tx(const tx& t) : tx() {
+    tx(const tx& t) : tx(t.m_compressor) {
         m_sid = t.m_sid;
         m_hash = t.m_hash;
         m_weight = t.m_weight;
@@ -134,8 +134,8 @@ struct tx : public cq::object {
         m_vout.insert(m_vout.begin(), t.m_vout.begin(), t.m_vout.end());
     }
 
-    explicit tx(const tiny::mempool_entry& t);  // only available with utils.cpp
-    explicit tx(const tiny::tx& t);             // only available with utils.cpp
+    tx(cq::compressor<uint256>* compressor, const tiny::mempool_entry& t);  // only available with utils.cpp
+    tx(cq::compressor<uint256>* compressor, const tiny::tx& t);             // only available with utils.cpp
 
     prepare_for_serialization();
 };
@@ -266,7 +266,7 @@ public:
     virtual void iterated(long starting_pos, long resulting_pos) =0;
 };
 
-class mff : public cq::chronology<tx> {
+class mff : public cq::chronology<uint256, tx> {
 public:
     static const uint8_t cmd_time_set               = 0x00;  // 0b00000
     static const uint8_t cmd_mempool_in             = 0x01;  // 0b00001
@@ -291,7 +291,7 @@ public:
     mff_delegate* m_delegate;
 
     mff(const std::string& dbpath, const std::string& prefix = "mff", uint32_t cluster_size = 2016, bool readonly = false)
-    : chronology<tx>(dbpath, prefix, cluster_size, readonly) {
+    : chronology<uint256, tx>(dbpath, prefix, cluster_size, readonly) {
         m_delegate = nullptr;
     }
 
@@ -367,7 +367,7 @@ public:
         if (f != m_file->get_path()) { pos = m_file->tell() - 1; }
         uint8_t no_offender_cmd = cmd & 0x07;
 
-        std::shared_ptr<tx> x = std::make_shared<tx>();
+        std::shared_ptr<tx> x = std::make_shared<tx>(this);
 
         try {
             switch (no_offender_cmd) {

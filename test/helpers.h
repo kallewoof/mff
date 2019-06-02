@@ -1,6 +1,5 @@
 #include <memory>
 #include <bcq/bitcoin.h>
-#include <cqdb/uint256.h>
 
 #ifndef REQUIRE
 #   define REQUIRE assert
@@ -15,8 +14,8 @@ static inline uint256 random_hash() {
 static inline uint8_t random_byte()  { uint8_t u8; cq::randomize(&u8, 1); return u8; }
 static inline uint16_t random_word() { uint16_t u16; cq::randomize(&u16, 2); return u16; }
 
-static inline std::shared_ptr<bitcoin::tx> make_random_tx() {
-    auto t = std::make_shared<bitcoin::tx>();
+static inline std::shared_ptr<bitcoin::tx> make_random_tx(cq::compressor<uint256>* compressor) {
+    auto t = std::make_shared<bitcoin::tx>(compressor);
     t->m_hash = random_hash();
     auto vin_sz = random_byte() % 10;
     for (auto i = 0; i < vin_sz; ++i) {
@@ -29,11 +28,11 @@ static inline std::shared_ptr<bitcoin::tx> make_random_tx() {
     return t;
 }
 
-static inline std::set<std::shared_ptr<bitcoin::tx>> random_txs() {
+static inline std::set<std::shared_ptr<bitcoin::tx>> random_txs(cq::compressor<uint256>* compressor) {
     uint8_t u8 = random_byte();
     std::set<std::shared_ptr<bitcoin::tx>> rv;
     for (uint8_t i = 0; i < u8; ++i) {
-        rv.insert(make_random_tx());
+        rv.insert(make_random_tx(compressor));
     }
     return rv;
 }
@@ -107,7 +106,7 @@ struct tracker {
             if (random_byte() < 200) {
                 confirmed.insert(sample_pop());
             } else {
-                confirmed.insert(make_random_tx());
+                confirmed.insert(make_random_tx(mff.get()));
             }
         }
         bitcoin::block* b = new bitcoin::block(height, random_hash(), confirmed);

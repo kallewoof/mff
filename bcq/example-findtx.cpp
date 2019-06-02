@@ -1,6 +1,6 @@
 #include <vector>
 #include <memory>
-#include <cqdb/uint256.h>
+#include <uint256.h>
 #include <utiltime.h>
 
 #include <bcq/bitcoin.h>

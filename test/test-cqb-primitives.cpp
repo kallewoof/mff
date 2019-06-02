@@ -88,8 +88,8 @@ TEST_CASE("Transactions", "[txs]") {
     //     }
 
     SECTION("hashset method") {
-        auto ob1 = make_random_tx();
-        auto ob2 = make_random_tx();
+        auto ob1 = make_random_tx(nullptr);
+        auto ob2 = make_random_tx(nullptr);
         std::set<uint256> hashes{ob1->m_hash, ob2->m_hash};
         REQUIRE(std::set<uint256>{} == bitcoin::tx::hashset(std::set<std::shared_ptr<bitcoin::tx>>{}));
         REQUIRE(hashes == bitcoin::tx::hashset(std::set<std::shared_ptr<bitcoin::tx>>{ob1, ob2}));
@@ -169,11 +169,12 @@ TEST_CASE("Transactions", "[txs]") {
     //     prepare_for_serialization();
 
     SECTION("serializing") {
+        auto compressor = std::make_shared<cq::compressor<uint256>>();
         cq::chv_stream stream;
-        auto ob = make_random_tx();
+        auto ob = make_random_tx(compressor.get());
         ob->serialize(&stream);
         stream.seek(0, SEEK_SET);
-        bitcoin::tx ob2;
+        bitcoin::tx ob2(compressor.get());
         ob2.deserialize(&stream);
         REQUIRE(*ob == ob2);
     }
@@ -195,7 +196,7 @@ TEST_CASE("Blocks", "[blocks]") {
     // };
 
     SECTION("construction") {
-        auto ob = make_random_tx();
+        auto ob = make_random_tx(nullptr);
         {
             bitcoin::block b(123, some_hash, std::set<uint256>{ob->m_hash});
             REQUIRE(b.m_height == 123);
@@ -230,7 +231,7 @@ TEST_CASE("Chain", "[chain]") {
         bitcoin::chain* chain = new bitcoin::chain();
         REQUIRE(chain->m_tip == 0);
         REQUIRE(chain->get_blocks().size() == 0);
-        chain->did_confirm(new bitcoin::block(123, some_hash, random_txs()));
+        chain->did_confirm(new bitcoin::block(123, some_hash, random_txs(nullptr)));
         REQUIRE(chain->m_tip == 123);
         delete chain;
     }
@@ -248,7 +249,7 @@ TEST_CASE("Chain", "[chain]") {
         bitcoin::chain chain;
         std::vector<bitcoin::block*> blocks;
         for (int i = 500000; i < 500010; ++i) {
-            auto b = new bitcoin::block(i, random_hash(), random_txs());
+            auto b = new bitcoin::block(i, random_hash(), random_txs(nullptr));
             blocks.push_back(b);
             chain.did_confirm(b);
             REQUIRE(chain.m_tip == i);
@@ -269,7 +270,7 @@ TEST_CASE("Chain", "[chain]") {
                 int rcap = i - reorg_cap;
                 if (rcap < 500000) rcap = 500000;
                 {
-                    auto b = new bitcoin::block(i, random_hash(), random_txs());
+                    auto b = new bitcoin::block(i, random_hash(), random_txs(nullptr));
                     blocks.push_back(b);
                     chain.did_confirm(b);
                     REQUIRE(chain.m_tip == i);
@@ -282,7 +283,7 @@ TEST_CASE("Chain", "[chain]") {
                     REQUIRE(*blocks.back() == *chain.get_blocks().back());
                 }
                 for (int j = rcap; j <= i; ++j) {
-                    auto b = new bitcoin::block(j, random_hash(), random_txs());
+                    auto b = new bitcoin::block(j, random_hash(), random_txs(nullptr));
                     blocks.push_back(b);
                     chain.did_confirm(b);
                     REQUIRE(chain.m_tip == j);
