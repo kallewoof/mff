@@ -492,6 +492,31 @@ public:
         // we ran out of entries; guess this is good bye
         return false;
     }
+    void ffwd_to_time(long target_time) {
+        // no nodes in list may have a time < target_time, but a time >= target_time is acceptable
+        if (first_read) {
+            first_read = false;
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                times[i] = nodes[i]->peek_time();
+            }
+        }
+        if (target_time > 0 && times[0] > 0 && times[0] < target_time) {
+            printf("seeking to %ld ...\n", target_time);
+        }
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            auto&n = nodes[i];
+            int z = 0;
+            while (times[i] && times[i] < target_time) {
+                if (n->read_entry()) times[i] = n->peek_time(); else times[i] = 0;
+                ++z;
+                if ((z % 100) == 0) {
+                    printf("%ld / %ld [%zu / %zu]                 \r", times[i], target_time, i, nodes.size()-1);
+                    fflush(stdout);
+                }
+            }
+            printf("\n");
+        }
+    }
 };
 
 struct seekable_record {

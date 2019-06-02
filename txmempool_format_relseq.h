@@ -17,6 +17,8 @@ extern uint64_t skipped_recs;
 
 namespace mff {
 
+class db_error : public std::runtime_error { public: explicit db_error(const std::string& str) : std::runtime_error(str) {} };
+
 class rseq_container {
 public:
     virtual long tell() = 0;
@@ -50,8 +52,12 @@ public:
         Unserialize(s, VARINT(o.n));
         DEBUG_SER("o.n=%" PRIu64 "\n", o.n);
         if (o.known) {
-            o.seq = g_rseq_ctr[I]->seq_read(true);
-            DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
+            try {
+                o.seq = g_rseq_ctr[I]->seq_read(true);
+                DEBUG_SER("o.seq = %" PRIu64 "\n", o.seq);
+            } catch (const db_error& err) {
+                fprintf(stderr, "unknown sequence for outpoint\n");
+            }
         } else {
             Unserialize(s, o.txid);
             DEBUG_SER("o.txid = %s\n", o.txid.ToString().c_str());

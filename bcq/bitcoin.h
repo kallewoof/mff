@@ -117,7 +117,14 @@ struct tx : public cq::object<uint256> {
         return s;
     }
 
-    tx(cq::compressor<uint256>* compressor) : cq::object<uint256>(compressor) { location = location_in_mempool; }
+    tx(cq::compressor<uint256>* compressor) : cq::object<uint256>(compressor) {
+        location = location_in_mempool;
+        m_weight = 0;
+        m_fee = 0;
+    }
+    tx(cq::compressor<uint256>* compressor, const uint256& hash) : tx(compressor) {
+        m_hash = hash;
+    }
 
     tx(const tx& t) : tx(t.m_compressor) {
         m_sid = t.m_sid;

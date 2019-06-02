@@ -406,13 +406,18 @@ bool mff_rseq<I>::read_entry() {
                 if (known) {
                     mplinfo_("known "); fflush(stdout);
                     pos = in.told; verify_told(); // for offset calculation
-                    seq = seq_read(true);
                     uint64_t offset;
-                    in >> VARINT(offset);
+                    try {
+                        seq = seq_read(true);
+                        in >> VARINT(offset);
+                        offset = pos - offset;
+                        pos = in.told; verify_told(); // for seek-back post-deserialization
+                        in.seek((long)offset);
+                    } catch (const db_error& err) {
+                        // no idea why this is recording a known (but not actually known) tx, but wtf ever
+                        fprintf(stderr, "\nknown TX_REC entry with unknown seq\n");
+                    }
                     // printf("seek point = pos - offset = %ld - %" PRIu64 " = %" PRIu64 "\n", pos, offset, pos - offset);
-                    offset = pos - offset;
-                    pos = in.told; verify_told(); // for seek-back post-deserialization
-                    in.seek((long)offset);
                     // if (rec_revmap.count(offset)) {
                     //     printf("offset is for txid %s = %" PRIu64 "\n", rec_revmap[offset].ToString().c_str(), tx_recs[rec_revmap[offset]].seq);
                     // } else {
@@ -429,38 +434,36 @@ bool mff_rseq<I>::read_entry() {
                     // }
                 } else {
                     mplinfo_("unknown "); fflush(stdout);
-                }
-                long rec_pos = in.told; verify_told();
-                serializer.deserialize_tx(in, *t);
-                // fix seq
-                if (known) {
-                    t->seq = last_seq = seq;
-                }
-                if (seekable && tx_recs.count(t->id) == 0) {
-                    tx_recs[t->id] = {rec_pos, t->seq};
-                    // rec_revmap[rec_pos] = t->id;
-                    // printf("rec_revmap[%ld] = %s\n", pos, t->id.ToString().c_str());
-                }
-                last_recorded_tx = t;
-                if (known) {
-                    // go back
-                    in.seek(pos);
-                }
-                DTX(t->id, "TX_REC %" PRIseq "\n", t->seq);
-                DSL(t->seq, "TX_REC %s\n", t->id.ToString().c_str());
-                if (txs.count(t->seq)) {
-                    if (t->id != txs[t->seq]->id) {
-                        printf("force-thawing %" PRIu64 " as it is being replaced!!!!!!!!\n", t->seq);
-                        printf("previous:\n%s\n", txs[t->seq]->to_string().c_str());
-                        printf("next:\n%s\n", t->to_string().c_str());
+                    long rec_pos = in.told; verify_told();
+                    serializer.deserialize_tx(in, *t);
+                    // // fix seq
+                    // if (known) {
+                    //     t->seq = last_seq = seq;
+                    // }
+                    if (seekable && tx_recs.count(t->id) == 0) {
+                        tx_recs[t->id] = {rec_pos, t->seq};
+                        // rec_revmap[rec_pos] = t->id;
+                        // printf("rec_revmap[%ld] = %s\n", pos, t->id.ToString().c_str());
                     }
-                    tx_thaw(t->seq); // this removes the tx from chill/freeze lists
-                    seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
-                }
-                txs[t->seq] = t;
-                seqs[t->id] = t->seq;
+                    last_recorded_tx = t;
+                    // if (known) {
+                    //     // go back
+                    //     in.seek(pos);
+                    // }
+                    DTX(t->id, "TX_REC %" PRIseq "\n", t->seq);
+                    DSL(t->seq, "TX_REC %s\n", t->id.ToString().c_str());
+                    if (txs.count(t->seq)) {
+                        if (t->id != txs[t->seq]->id) {
+                            printf("force-thawing %" PRIu64 " as it is being replaced!!!!!!!!\n", t->seq);
+                            printf("previous:\n%s\n", txs[t->seq]->to_string().c_str());
+                            printf("next:\n%s\n", t->to_string().c_str());
+                        }
+                        tx_thaw(t->seq); // this removes the tx from chill/freeze lists
+                        seqs.erase(txs[t->seq]->id); // this unlinks the txid-seq rel
+                    }
+                    txs[t->seq] = t;
+                    seqs[t->id] = t->seq;
 
-                if (!known) {
                     if (known_txid.count(t->id)) {
                         rerecs++;
                         bool frozen = known_txid[t->id] < 0;
@@ -497,20 +500,24 @@ bool mff_rseq<I>::read_entry() {
 
             case TX_IN: {
                 mplinfo("TX_IN(): "); fflush(stdout);
-                uint64_t seq = seq_read(true);
-                DSL(seq, "TX_IN\n");
-                if (!txs.count(seq)) {
-                    fprintf(stderr, "*** missing seq=%" PRIu64 " in txs\n", seq);
+                try {
+                    uint64_t seq = seq_read(true);
+                    DSL(seq, "TX_IN\n");
+                    if (!txs.count(seq)) {
+                        fprintf(stderr, "*** missing seq=%" PRIu64 " in txs\n", seq);
+                    }
+                    assert(txs.count(seq));
+                    last_recorded_tx = txs[seq];
+                    if (txs.count(seq)) {
+                        txs[seq]->location = tx::location_in_mempool;
+                        tx_thaw(seq);
+                    }
+                    mplinfo_("seq=%" PRIu64 "\n", seq);
+                    last_seqs.push_back(seq);
+                    if (listener) listener->tx_in(this, *txs[seq]);
+                } catch (const db_error& err) {
+                    fprintf(stderr, "\nerror fetching sequence; ignoring\n");
                 }
-                assert(txs.count(seq));
-                last_recorded_tx = txs[seq];
-                if (txs.count(seq)) {
-                    txs[seq]->location = tx::location_in_mempool;
-                    tx_thaw(seq);
-                }
-                mplinfo_("seq=%" PRIu64 "\n", seq);
-                last_seqs.push_back(seq);
-                if (listener) listener->tx_in(this, *txs[seq]);
                 break;
             }
 
@@ -627,17 +634,21 @@ bool mff_rseq<I>::read_entry() {
                     undo_block_at_height(height);
                     if (listener) listener->block_unconfirm(this, height);
                 } else {
-                    if (listener) assert(!"not implemented");
+                    // if (listener) assert(!"not implemented");
                     mplinfo_("unknown, height=%u\n", height);
                     uint64_t count = ReadCompactSize(in);
                     mplinfo("%" PRIu64 " transactions\n", count);
                     for (uint64_t i = 0; i < count; ++i) {
-                        uint64_t seq = seq_read(true);
-                        mplinfo("%" PRIu64 ": seq = %" PRIu64 "\n", i, seq);
-                        if (seq) {
-                            assert(txs.count(seq));
-                            last_seqs.push_back(seq);
-                            txs[seq]->location = tx::location_in_mempool;
+                        try {
+                            uint64_t seq = seq_read(true);
+                            mplinfo("%" PRIu64 ": seq = %" PRIu64 "\n", i, seq);
+                            if (seq) {
+                                assert(txs.count(seq));
+                                last_seqs.push_back(seq);
+                                txs[seq]->location = tx::location_in_mempool;
+                            }
+                        } catch (const db_error& err) {
+                            // we don't really care
                         }
                     }
                 }
@@ -694,7 +705,7 @@ inline seq_t mff_rseq<I>::seq_read(bool known) {
     DSL(last_seq, "..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, rseq >= 0 ? "+" : "", rseq);
     // printf("\n..%ld [read %" PRIseq " as %s%" PRIi64 "]\n", in.told, last_seq, rseq >= 0 ? "+" : "", rseq);
     if (known) {
-        assert(txs.count(last_seq));
+        if (!txs.count(last_seq)) throw db_error("txs lookup failure (sequence id error)");
         VERIFY_SEQ(txs[last_seq]->id, last_seq);
     }
     return last_seq;
