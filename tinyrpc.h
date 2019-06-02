@@ -202,8 +202,9 @@ struct rpc {
             fseek(fphex->m_fp, 0, SEEK_END);
             size_t sz = ftell(fphex->m_fp);
             if (sz == 0) {
-                if (retries == 5) {
-                    throw rpc_error("failed to fetch tx " + txhex.ToString() + " after 5 tries");
+                if (retries == 3) {
+                    fprintf(stderr, "failed to fetch tx %s after 3 tries", txhex.ToString().c_str());
+                    return false;
                 }
                 fprintf(stderr, "failed to fetch tx %s... waiting 5 seconds and trying again...\n", txhex.ToString().c_str());
                 unlink(dsthex.c_str());
