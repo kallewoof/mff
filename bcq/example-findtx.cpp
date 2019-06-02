@@ -5,6 +5,9 @@
 
 #include <bcq/bitcoin.h>
 
+#include <streams.h>
+#include <tinytx.h>
+
 inline char* time_string(int64_t time);
 inline char* size_string(long size);
 
@@ -79,10 +82,13 @@ int main(int argc, const char** argv) {
         }
 
         azr.populate_touched_txids(touched_txids);
-        if (touched_txids.count(txid)) {
+        if (touched_txids.count(txid) /*|| azr.last_command == bitcoin::mff::cmd_mempool_invalidated*/) {
             printf("%s: %s", time_string(mff->m_current_time), bitcoin::cmd_string(azr.last_command).c_str());
             if (azr.last_command == bitcoin::mff::cmd_mempool_invalidated) {
-                printf(" %s (%s)", txid_str(azr.last_txids.back()).c_str(), bitcoin::reason_string(azr.last_reason).c_str());
+                tiny::tx inv;
+                CDataStream ds(azr.last_rawtx, SER_DISK, PROTOCOL_VERSION);
+                ds >> inv;
+                printf(" %s (%s)\n%s", txid_str(azr.last_txids.back()).c_str(), bitcoin::reason_string(azr.last_reason).c_str(), inv.ToString().c_str());
                 if (!azr.last_cause.IsNull()) {
                     uint256 replacement = azr.last_cause;
                     printf(" -> %s", txid_str(replacement).c_str());

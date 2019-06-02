@@ -121,7 +121,7 @@ void mff_analyzer::populate_touched_txids(std::set<uint256>& txids) const {
     for (const auto& tx : last_txs) {
         txids.insert(tx->m_hash);
         for (const auto& i : tx->m_vin) {
-            txids.insert(i.m_txid);
+            if (!i.m_txid.IsNull()) txids.insert(i.m_txid);
         }
     }
     if (!last_cause.IsNull()) txids.insert(last_cause);
