@@ -104,19 +104,6 @@ void mff_analyzer::block_reorged(uint32_t height) {
     last_unmined_height = height;
 }
 
-std::string mff_analyzer::to_string() const {
-    char buf[1024];
-    #define X(args...) sprintf(buf, args); return buf
-    switch (last_command) {
-    case mff::cmd_mempool_in:  X("mempool_in %s", last_txs.size() == 1 ? last_txs.back()->m_hash.ToString().c_str() : last_txids.size() == 1 ? last_txids.back().ToString().c_str() : "????");
-    case mff::cmd_mempool_out: X("mempool_out %s", last_txids.back().ToString().c_str());
-    case mff::cmd_mempool_invalidated: X("mempool_invalidated %s (reason=%s; offender=%s)", last_txids.back().ToString().c_str(), reason_string(last_reason).c_str(), last_cause.ToString().c_str());
-    case mff::cmd_block_mined: X("mined %u (%s)", last_mined_block->m_height, last_mined_block->m_hash.ToString().c_str());
-    case mff::cmd_block_unmined: X("unmined %u", last_unmined_height);
-    default: return "!!!!??????";
-    }
-}
-
 void mff_analyzer::iterated(long starting_pos, long resulting_pos) {
     count[last_command]++;
     long used = resulting_pos - starting_pos;

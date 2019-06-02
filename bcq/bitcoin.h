@@ -261,7 +261,6 @@ public:
      * A reorg occurred for the block at the given height; the block one height below the given height is the new chain tip.
      */
     virtual void block_reorged(uint32_t height) =0;
-    virtual std::string to_string() const =0;
 
     virtual void iterated(long starting_pos, long resulting_pos) =0;
 };
@@ -500,8 +499,6 @@ public:
     virtual void discard_transaction_with_txid(const uint256& txid, const std::vector<uint8_t>& rawtx, uint8_t reason, const uint256* cause = nullptr) override;
     virtual void block_confirmed(const block& b) override;
     virtual void block_reorged(uint32_t height) override;
-
-    virtual std::string to_string() const override;
 
     virtual void iterated(long starting_pos, long resulting_pos) override;
 
