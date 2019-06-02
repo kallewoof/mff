@@ -12,6 +12,11 @@
 #include <tinyrpc.h>
 #include <amap.h>
 
+#undef time_rel_value
+
+#include <bcq/bitcoin.h>
+#include <bcq/utils.h>
+
 inline std::string time_string(int64_t time) {
     char buf[128];
     sprintf(buf, "%s", asctime(gmtime((time_t*)(&time))));
@@ -63,15 +68,15 @@ int main(int argc, char* const* argv) {
     ca.add_option("verbose", 'v', no_arg);
     ca.add_option("rpccall", 'r', req_arg);
     ca.add_option("amap", 'm', req_arg);
-    ca.add_option("do-not-append", 'x', no_arg);
+    // ca.add_option("do-not-append", 'x', no_arg);
     ca.add_option("mempool-file", 'p', req_arg);
     ca.parse(argc, argv);
 
-    if (ca.m.count('h') || ca.l.size() < 4 || (ca.l.size() % 1)) {
-        fprintf(stderr, "syntax: %s [--help|-h] [--verbose|-v] [--do-not-append|-x] [--mempool-file|-p] [--rpccall|-r] <input-format> <input-path> [<input-format-2> <input-path-2> [...]] <output-format> <output-path>\n", argv[0]);
+    if (ca.m.count('h') || ca.l.size() < 3 || !(ca.l.size() & 1)) {
+        fprintf(stderr, "syntax: %s [--help|-h] [--verbose|-v] [--do-not-append|-x] [--mempool-file|-p] [--rpccall|-r] <input-format> <input-path> [<input-format-2> <input-path-2> [...]] <output-path>\n", argv[0]);
         fprintf(stderr,
             "available formats:\n"
-            "  mff       Standard Memory File Format\n"
+            "  mff       Previous Memory File Format, Before Switch to CQDB\n"
             "  mff-tt    Time-tail MFF (Rev 2018-05-27)\n"
             "  mff-rs    Reused sequence based Memory File Format\n"
             "  mff-st    Simple-time MFF (Rev 2018-06-08)\n"
@@ -93,13 +98,13 @@ int main(int argc, char* const* argv) {
 
     std::string mempool_file = ca.m.count('p') ? ca.m['p'] : "";
 
-    // bool verbose = ca.m.count('v');
-    bool overwrite_output = ca.m.count('x');
+    // // bool verbose = ca.m.count('v');
+    // bool overwrite_output = ca.m.count('x');
 
-    if (overwrite_output) {
-        // truncate file to 0 bytes
-        fclose(fopen(ca.l[3], "wb"));
-    }
+    // if (overwrite_output) {
+    //     // truncate file to 0 bytes
+    //     fclose(fopen(ca.l[3], "wb"));
+    // }
 
     // check file sizes
     FILE* fp = fopen(ca.l[1], "rb");
@@ -110,6 +115,8 @@ int main(int argc, char* const* argv) {
     fseek(fp, 0, SEEK_END);
     long in_bytes = ftell(fp);
     fclose(fp);
+
+    long internal_time = 0;
 
     mff::cluster c;
     for (size_t i = 0; i + 2 < ca.l.size(); i += 2) {
@@ -122,19 +129,27 @@ int main(int argc, char* const* argv) {
         in->conversion_source = true;
         in->tag = ca.l.size() > 4 ? strprintf("IN#%zu", i/2) : "IN  ";
     }
-    mff::mff* out = alloc_mff_from_format(ca.l[ca.l.size()-2], ca.l[ca.l.size()-1], false);
-    if (!out) {
-        fprintf(stderr, "invalid format: %s\n", ca.l[ca.l.size()-2]);
-        return 1;
-    }
-    out->tag = "OUT ";
-    for (auto& n : c.nodes) out->link_source(n);
+    auto out = std::make_shared<bitcoin::mff>(ca.l[ca.l.size()-1]);
+    out->load();
+    bitcoin::mff_analyzer azr;
+    out->m_delegate = &azr;
+    azr.enable_touchmap = true;
+    if (!out->m_file) out->begin_segment(0);
+    // mff::mff* out = alloc_mff_from_format(ca.l[ca.l.size()-2], ca.l[ca.l.size()-1], false);
+    // if (!out) {
+    //     fprintf(stderr, "invalid format: %s\n", ca.l[ca.l.size()-2]);
+    //     return 1;
+    // }
+    // out->tag = "OUT ";
+    // for (auto& n : c.nodes) out->link_source(n);
 
     // map in mempool to out
-    c.mempool->callback = out;
+    bitcoin::mff_mempool_callback mempool_callback(internal_time, out);
+    c.mempool->callback = &mempool_callback;
+    // c.mempool->callback = out;
 
     // load mempool unless overwriting output, if provided and if the file exists
-    if (!overwrite_output && mempool_file != "") {
+    if (mempool_file != "") {
         FILE* fp = fopen(mempool_file.c_str(), "rb");
         if (fp) {
             fclose(fp);
@@ -145,32 +160,13 @@ int main(int argc, char* const* argv) {
     size_t out_read = 0;
 
     int64_t c_start_time = 0;
-    if (!overwrite_output) {
-        printf("seeking to end of output..."); fflush(stdout);
-        if (out->read_entry()) {
-            out_read++;
-            c_start_time = out->last_time;
-        }
-        while (out->read_entry()) out_read++;
-        printf(" read %zu entries from %s\n", out_read, ca.l[3]);
-        uint64_t total = (uint64_t)out->tell();
-        uint64_t counted = total - 2; // magic 'BM'
-        for (auto& x : out->space_usage) {
-            counted -= x.second;
-            printf("%10s : %-10" PRIi64 " (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
-        }
-        printf("unaccounted: %-10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
-    }
     uint32_t entries = 0;
-    out->entry_counter = out_read;
-    int64_t last_time = out->last_time;
+    int64_t last_time = out->m_current_time;
     int64_t start_time = GetTime();
     int64_t entry_start = 0;
-    int64_t internal_time = 0;
     for (auto& n : c.nodes) {
         n->shared_time = &internal_time;
     }
-    out->shared_time = &internal_time;
     // in->shared_time = out->shared_time = &internal_time;
     int64_t timepoint_a, timepoint_b, internalpoint_a, internalpoint_b;
     timepoint_a = timepoint_b = start_time;
@@ -180,7 +176,7 @@ int main(int argc, char* const* argv) {
             internalpoint_a = internalpoint_b = c.time;
         }
         if (!c_start_time) c_start_time = c.time;
-        if (last_time && !overwrite_output) {
+        if (last_time) {
             if (c.time < last_time) {
                 // we cannot allow jumping back in time
                 fprintf(stderr, "*** the output file (%s) ends at timestamp\n\t%" PRIi64 "\nwhere the input file (%s%s) starts at timestamp\n\t%" PRIi64 "\n*** writing to the output file would result in a jump back in time, which is not allowed. to do this you must do a 3-file merge, i.e. include two input files and a separate output file: mff-conv a-fmt a-name b-fmt b-name out-fmt out-name\n",
@@ -206,7 +202,7 @@ int main(int argc, char* const* argv) {
             // we wanna see how many mff seconds pass per real second,
             // i.e. mff_time_elapsed / elapsed
             float s_per_s = !elapsed ? 0 : float(mff_time_elapsed) / elapsed;
-            printf(" %5.1f%% %6u %s [%u -> %" PRIu64 ", %7.3fx]   \r", done, out->blk_tell(), time_string(internal_time).c_str(), entries, out->entry_counter, s_per_s);
+            printf(" %5.1f%% %6u %s [%u -> %" PRIu64 ", %7.3fx]   \r", done, out->m_chain.m_tip, time_string(internal_time).c_str(), entries, azr.total_entries, s_per_s);
             fflush(stdout);
             needs_newline = true;
             if (elapsed > 20 && now - timepoint_b > 10) {
@@ -232,12 +228,12 @@ int main(int argc, char* const* argv) {
         int64_t hours = (elapsed % 86400) / 3600;
         printf("spans over %" PRIi64 " days, %" PRIi64 " hours\n", days, hours);
     }
-    uint64_t total = (uint64_t)out->tell();
+    uint64_t total = azr.total_bytes;
     uint64_t counted = total;
-    for (auto& x : out->space_usage) {
+    for (auto& x : azr.usage) {
         counted -= x.second;
-        printf("%10s : %-10" PRIi64 " (%.2f%%)\n", mff::cmd_str((mff::CMD)x.first).c_str(), x.second, 100.0 * x.second / total);
+        printf("%10s : %-10ld (%.2f%%)\n", bitcoin::cmd_string(x.first).c_str(), x.second, 100.0 * x.second / total);
     }
     printf("unaccounted: %-10" PRIi64 " (%.2f%%)\n", counted, 100.0 * counted / total);
-    printf("timestamp at end: %" PRIi64 "\n", out->last_time);
+    printf("timestamp at end: %ld\n", out->m_current_time);
 }

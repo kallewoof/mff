@@ -85,6 +85,8 @@ mff_reader_LDADD = \
 mff_conv_SOURCES = \
     amap.h \
     amap.cpp \
+	bcq/utils.h \
+	bcq/utils.cpp \
     mff-conv.cpp \
 	tinyfs.h \
     tinyblock.h \
@@ -104,10 +106,11 @@ mff_conv_SOURCES = \
     txmempool_format_relseq.cpp
 mff_conv_CPPFLAGS = $(AM_CPPFLAGS)
 mff_conv_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-mff_conv_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
+mff_conv_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
 mff_conv_LDADD = \
     $(LIBMFF) \
+	$(LIBBCQ) \
     $(LIBBITCOIN)
 
 # aj2bin binary #

@@ -334,7 +334,7 @@ public:
     virtual void link_source(mff* src) {}
     int64_t last_time = 0;
     uint64_t entry_counter = 0;
-    int64_t* shared_time = nullptr;
+    long* shared_time = nullptr;
     std::shared_ptr<tiny::mempool> mempool;
     void load_mempool(const std::string& path) {
         if (!mempool.get()) {

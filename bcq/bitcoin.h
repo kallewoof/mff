@@ -478,6 +478,7 @@ public:
     bool enable_touchmap = false;
     mutable std::map<uint256,uint32_t> touchmap; // requires above bool set to true and calls to populate_touched_txids() after every iteration
     uint64_t total_bytes{0};
+    uint64_t total_entries{0};
     uint64_t total_txrecs{0};
     uint64_t total_txrec_bytes{0};
     std::map<uint8_t,size_t> usage;

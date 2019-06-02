@@ -118,12 +118,13 @@ std::string mff_analyzer::to_string() const {
 }
 
 void mff_analyzer::iterated(long starting_pos, long resulting_pos) {
-    count[last_command]++;
+    ++count[last_command];
+    ++total_entries;
     long used = resulting_pos - starting_pos;
     total_bytes += used;
     usage[last_command] += used;
     if (last_command == mff::cmd_mempool_in && last_txs.size()) {
-        total_txrecs++;
+        ++total_txrecs;
         total_txrec_bytes += used;
     }
 }
