@@ -108,10 +108,11 @@ private:
     MemPoolRemovalReason determine_reason(std::shared_ptr<const mempool_entry> added, std::shared_ptr<const mempool_entry> removed);
     void enqueue(const std::shared_ptr<const mempool_entry>& entry, bool preserve_size_limits = true);
 public:
-    constexpr static size_t MAX_ENTRIES = 10000; // keep max this many transactions
-    constexpr static size_t MAX_REFS = 50000; // keep this many references
+    constexpr static size_t MAX_ENTRIES = 200000; // keep max this many transactions
+    constexpr static size_t MAX_REFS =   1000000; // keep this many references
     double min_feerate = 0; // satoshi/vbyte minimum feerate required to allow a transaction into the mempool
     size_t rejections = 0; // number of txs that were rejected due to feerate minimum check
+    size_t selfbumps = 0; // number of txs that rejected themselves because they would have been thrown out immediately anyway
     mempool_callback* callback = nullptr;
     std::map<uint256, std::shared_ptr<const mempool_entry>> entry_map;
     std::map<uint256, std::vector<std::shared_ptr<const mempool_entry>>> ancestry;

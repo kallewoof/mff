@@ -15,8 +15,8 @@ EXTRA_LIBRARIES += \
   $(LIBBITCOIN) \
   $(LIBBCQ)
 
-bin_PROGRAMS = aj2bin
-noinst_PROGRAMS = example example-findtx test-mff
+bin_PROGRAMS = aj2bin mff-parse-ajb mff-findtx
+noinst_PROGRAMS = test-mff
 lib_LIBRARIES = libbcq.a
 
 .PHONY: FORCE check-symbols check-security
@@ -69,33 +69,33 @@ aj2bin_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS)
 aj2bin_LDADD = \
     $(LIBBITCOIN)
 
-# example binary #
-example_SOURCES = \
+# mff-parse-ajb binary #
+mff_parse_ajb_SOURCES = \
 	ajb.h \
 	ajb.cpp \
     amap.h \
     amap.cpp \
-	bcq/example.cpp \
+	mff-parse-ajb.cpp \
 	bcq/utils.h \
 	bcq/utils.cpp \
     tinymempool.h \
     tinymempool.cpp
-example_CPPFLAGS = $(AM_CPPFLAGS)
-example_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
-example_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
+mff_parse_ajb_CPPFLAGS = $(AM_CPPFLAGS)
+mff_parse_ajb_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+mff_parse_ajb_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
-example_LDADD = \
+mff_parse_ajb_LDADD = \
 	$(LIBBCQ) \
 	$(LIBBITCOIN)
 
-# example-findtx binary #
-example_findtx_SOURCES = \
-	bcq/example-findtx.cpp
-example_findtx_CPPFLAGS = $(AM_CPPFLAGS)
-example_findtx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
-example_findtx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
+# mff-findtx binary #
+mff_findtx_SOURCES = \
+	mff-findtx.cpp
+mff_findtx_CPPFLAGS = $(AM_CPPFLAGS)
+mff_findtx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+mff_findtx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
-example_findtx_LDADD = \
+mff_findtx_LDADD = \
 	$(LIBBCQ) \
 	$(LIBBITCOIN)
 
@@ -107,7 +107,7 @@ test_mff_SOURCES = \
 	test/test-cqb-primitives.cpp \
 	test/test-mff.cpp
 test_mff_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
-test_mff_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -I/usr/local/include
+test_mff_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 test_mff_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_AP_LDFLAGS) -lcqdb
 
 test_mff_LDADD = \

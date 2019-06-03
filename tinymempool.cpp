@@ -91,6 +91,16 @@ void mempool::insert_tx(std::shared_ptr<tx> x, bool retain) {
         return;
     }
 
+    // would this tx be dropped immediately? if so we don't bother inserting it
+    if (!retain && (entry_queue.size() + 1 > MAX_ENTRIES || ancestry.size() + x->vin.size() > MAX_REFS)) {
+        // mempool is full... would we bump out lowest tx?
+        if (entry->feerate() <= entry_queue[0]->feerate()) {
+            // we would be bumped out actually; so ignore us
+            ++selfbumps;
+            return;
+        }
+    }
+
     evict_for_tx(x, entry);
 
     entry_map[x->hash] = entry;
