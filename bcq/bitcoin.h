@@ -198,7 +198,6 @@ public:
         m_tip = blk->m_height;
         m_blocks.push_back(blk);
         while (m_blocks.size() > 100) {
-            printf("\ntrimming block %u\n", m_blocks[0]->m_height);
             delete m_blocks[0];
             m_blocks.erase(m_blocks.begin());
         }
