@@ -129,6 +129,8 @@ void mff_analyzer::populate_touched_txids(std::set<uint256>& txids) const {
     if (enable_touchmap) {
         for (const auto& u : txids) ++touchmap[u];
     }
+    // while not strictly a txid, we also include the block hash, as that lets users search by block hash too
+    if (last_mined_block) txids.insert(last_mined_block->m_hash);
 }
 
 } // namespace bitcoin

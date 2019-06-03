@@ -154,7 +154,7 @@ int main(int argc, const char** argv) {
     printf("%-25s   %-10s (%-6s) [%-8s (%-6s)] {%-10s}\n", "category", "bytes", "%", "count", "%", "avg bytes");
     printf("=========================   ==========  ======   ========  ======    ==========\n");
     #define P(category, bytes, count, avgbytes) printf("%-25s : %10zu (%5.2lf%%) [%8" PRIi64 " (%5.2lf%%)] {%10.2f}\n", category, bytes, 100.0 * (bytes) / total, count, 100.0 * (count) / entries, avgbytes);
-    
+
     for (auto& x : azr.usage) {
         counted -= x.second;
         uint64_t count = azr.count[x.first];

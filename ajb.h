@@ -36,7 +36,7 @@ struct ajb {
     int64_t get_output_value(const uint256& txid, int n);
     int64_t get_tx_input_amount(tiny::tx& tx);
 
-    bool process_block_hash(const uint256& blockhash);
+    bool process_block_hash(const uint256& blockhash, bool reorging = false);
 
     bool read_entry();
     long tell() { return ftell(in_fp); }
