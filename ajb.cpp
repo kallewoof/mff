@@ -93,6 +93,7 @@ bool ajb::process_block_hash(const uint256& blockhash, bool reorging) {
             // is this actually in the same chain?
             auto p = mff->m_chain.get_block_for_height(height - 1);
             if (p && blk.prev_blk != p->m_hash) {
+                printf("\nnote: reorg detected (block %u=%s with prev=%s, but we are on block %u=%s)\n", height, blk.GetHash().ToString().c_str(), blk.prev_blk.ToString().c_str(), mff->m_chain.m_tip, mff->m_chain.get_blocks().back()->m_hash.ToString().c_str());
                 // it isn't; we are reorging
                 mff->unconfirm_tip(current_time);
                 process_block_hash(blk.prev_blk, true);
