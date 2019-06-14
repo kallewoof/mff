@@ -10,11 +10,15 @@
 
 #define BITCOIN_SER(T) \
     template<typename Stream> void serialize(Stream& stm, const T& t) { t.Serialize(stm); } \
-    template<typename Stream> void unserialize(Stream& stm, T& t) { t.Unserialize(stm); }
+    template<typename Stream> void deserialize(Stream& stm, T& t) { t.Unserialize(stm); }
 
 extern "C" { void libbcq_is_present(void); } // hello autotools, pleased to meat you
 
-BITCOIN_SER(uint256);
+namespace cq {
+
+    BITCOIN_SER(uint256);
+
+} // namespace cq
 
 namespace tiny {
 
