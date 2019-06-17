@@ -153,25 +153,29 @@ bool ajb::read_entry() {
             if (next_block_time == 0) {
                 tiny::block block;
                 uint32_t height;
-                if (rpc->get_tx_block(tx.hash, block, height)) {
-                    // presumably, the next block is "block". we want to make sure
-                    // we are up to speed on the previous one
-                    if (height == mff->m_chain.m_tip + 1) {
-                        next_block_time = block.time;
-                        next_block = block.GetHash();
-                    } else {
-                        // find the first block whose timestamp < current_time, then mine up to it
-                        // and mark up the next block
-                        uint32_t height2;
-                        uint256 hash2;
-                        if (rpc->find_block_near_timestamp(current_time, mff->m_chain.m_tip > height - 200 ? mff->m_chain.m_tip : height - 200, height, height2, hash2)) {
-                            process_block_hash(hash2);
+                try {
+                    if (rpc->get_tx_block(tx.hash, block, height)) {
+                        // presumably, the next block is "block". we want to make sure
+                        // we are up to speed on the previous one
+                        if (height == mff->m_chain.m_tip + 1) {
+                            next_block_time = block.time;
+                            next_block = block.GetHash();
                         } else {
-                            // whatever, just confirm the block at height-1
-                            rpc->get_block(height - 1, block, hash2);
-                            process_block_hash(hash2);
+                            // find the first block whose timestamp < current_time, then mine up to it
+                            // and mark up the next block
+                            uint32_t height2;
+                            uint256 hash2;
+                            if (rpc->find_block_near_timestamp(current_time, mff->m_chain.m_tip > height - 200 ? mff->m_chain.m_tip : height - 200, height, height2, hash2)) {
+                                process_block_hash(hash2);
+                            } else {
+                                // whatever, just confirm the block at height-1
+                                rpc->get_block(height - 1, block, hash2);
+                                process_block_hash(hash2);
+                            }
                         }
                     }
+                } catch (const tiny::rpc_error& err) {
+                    // no big deal, tx was probably orphaned; use the next tx the next time
                 }
             }
             // printf("- read tx %s\n", tx.ToString().c_str());
