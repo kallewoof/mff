@@ -64,6 +64,7 @@ int main(int argc, const char** argv) {
     int64_t start_time = GetTime();
     std::set<uint256> touched_txids;
     azr.enable_touchmap = true;
+    std::map<uint256,uint256> rbf_bumps;
     while (f.iterate()) {
         if (block_end && f.m_chain.m_tip > block_end) break;
         if (time_end && f.m_current_time > time_end) break;
@@ -80,9 +81,22 @@ int main(int argc, const char** argv) {
             printf(" %sE %sB : %s <cluster=%" PRIid " block=%u>     \r", size_string(entries), size_string(pos2), time_string(mff->m_current_time), cluster, block_height);
             fflush(stdout);
         }
-
+        bool force_show = false;
+        if (azr.last_command == bitcoin::mff::cmd_mempool_invalidated) {
+            // case 1: add RBF-bumps to mapping
+            if (azr.last_reason == bitcoin::mff::reason_replaced) {
+                if (!azr.last_cause.IsNull()) {
+                    printf("marking %s -> %s\n", azr.last_txids.back().ToString().c_str(), azr.last_cause.ToString().c_str());
+                    rbf_bumps[azr.last_txids.back()] = azr.last_cause;
+                }
+            } else if (azr.last_reason == bitcoin::mff::reason_conflict) {
+                if (rbf_bumps.count(azr.last_txids.back()) && rbf_bumps[azr.last_txids.back()] == azr.last_cause) {
+                    // RBF-bump t0 -> t1; mine t0; t0 now double-spends t1
+                } else force_show = true;
+            } else force_show = true;
+        }
         azr.populate_touched_txids(touched_txids);
-        if (touched_txids.count(txid) /*|| azr.last_command == bitcoin::mff::cmd_mempool_invalidated*/) {
+        if (touched_txids.count(txid) || force_show) {
             printf("%s: %s", time_string(mff->m_current_time), bitcoin::cmd_string(azr.last_command).c_str());
             if (azr.last_command == bitcoin::mff::cmd_mempool_invalidated) {
                 tiny::tx inv;
